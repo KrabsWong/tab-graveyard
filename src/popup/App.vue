@@ -30,13 +30,18 @@ export default {
     const tabs = ref([])
 
     const getMessage = (key, substitutions = []) => {
-      const message = chrome.i18n.getMessage(key, substitutions)
+      // 确保 substitutions 是字符串数组
+      const subs = Array.isArray(substitutions) 
+        ? substitutions.map(String) 
+        : [String(substitutions)]
+      
+      const message = chrome.i18n.getMessage(key, subs)
       if (!message) {
         // 如果获取失败，返回一个后备显示
         if (key === "timeAgoNow") return "now"
-        if (key === 'timeAgoMinutes') return `${substitutions[0]} mins ago`
-        if (key === 'timeAgoHours') return `${substitutions[0]} hrs ago`
-        if (key === 'timeAgoDays') return `${substitutions[0]} days ago`
+        if (key === 'timeAgoMinutes') return `${subs[0]} mins ago`
+        if (key === 'timeAgoHours') return `${subs[0]} hrs ago`
+        if (key === 'timeAgoDays') return `${subs[0]} days ago`
         return key
       }
       return message
