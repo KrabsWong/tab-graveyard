@@ -41,7 +41,6 @@ This extension:
 
 ## Screenshots
 
-<img width="410" alt="image" src="https://github.com/user-attachments/assets/114c435b-51e5-4b7b-afa4-e45f4159ff68" />
+<img width="450" alt="image" src="https://github.com/user-attachments/assets/2a506a37-623c-4adc-bce0-bda934160e05" />
 
-<img width="410" alt="image" src="https://github.com/user-attachments/assets/ee0a7d82-186e-4269-bede-08521ad639f0" />
-
+<img width="450" alt="image" src="https://github.com/user-attachments/assets/7f54a3d1-f6f5-41d3-83b2-21dc691b6602" />
