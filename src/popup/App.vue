@@ -33,6 +33,7 @@
 
 <script>
 import { ref, onMounted } from 'vue'
+import enMessages from '../_locales/en/messages.json'
 
 export default {
   setup() {
@@ -44,13 +45,28 @@ export default {
         ? substitutions.map(String) 
         : [String(substitutions)]
       
-      const message = chrome.i18n.getMessage(key, subs)
+      // 尝试使用当前语言获取消息
+      let message = chrome.i18n.getMessage(key, subs)
+      
+      // 如果获取失败，从英文语言文件获取
       if (!message) {
-        // 如果获取失败，返回一个后备显示
-        if (key === "timeAgoNow") return "now"
-        if (key === 'timeAgoMinutes') return `${subs[0]} mins ago`
-        if (key === 'timeAgoHours') return `${subs[0]} hrs ago`
-        if (key === 'timeAgoDays') return `${subs[0]} days ago`
+        const enMessage = enMessages[key]
+        if (enMessage?.message) {
+          // 处理占位符
+          let finalMessage = enMessage.message
+          if (subs.length > 0 && enMessage.placeholders) {
+            // 遍历所有占位符
+            for (const [name, placeholder] of Object.entries(enMessage.placeholders)) {
+              const index = parseInt(placeholder.content.replace('$', '')) - 1
+              if (index >= 0 && index < subs.length) {
+                // 使用大写的占位符名称进行替换
+                finalMessage = finalMessage.replace(`$${name.toUpperCase()}$`, subs[index])
+              }
+            }
+          }
+          return finalMessage
+        }
+        // 如果英文文件中也没有对应的key，返回key本身作为最后的兜底
         return key
       }
       return message
