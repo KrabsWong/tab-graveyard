@@ -124,6 +124,8 @@ export default {
 .popup-container {
   background-color: #ffffff;
   color: #333333;
+  width: 100%;
+  height: 100vh;
   min-width: 400px;
   max-width: 600px;
   max-height: 600px;
@@ -134,30 +136,46 @@ export default {
     background-color: #1a1a1a;
     color: #e0e0e0;
   }
+}
 
-  /* 自定义滚动条样式 */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
+.tab-list {
+  height: 100%;
+  overflow-y: auto;
+  padding: 8px;
+  box-sizing: border-box;
+}
 
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+@media (prefers-color-scheme: dark) {
   ::-webkit-scrollbar-track {
     background: #2a2a2a;
   }
 
   ::-webkit-scrollbar-thumb {
     background: #555;
-    border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
     background: #666;
   }
-}
-
-.tab-list {
-  height: 100%;
-  overflow-y: auto;
 }
 
 .tab-item {
@@ -168,6 +186,7 @@ export default {
   gap: 12px;
   transition: all 0.2s;
   cursor: pointer;
+  border-radius: 6px;
 }
 
 @media (prefers-color-scheme: dark) {

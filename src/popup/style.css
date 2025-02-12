@@ -1,30 +1,56 @@
-.tab-list {
-  min-width: 400px;
-  max-width: 600px;
-  max-height: 600px;
-  overflow-y: auto;
-  padding: 8px;
-  background: #fff;
+/* 基础样式 */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background-color: #ffffff;
 }
 
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+/* 弹出窗口容器 */
+.popup-container {
+  background-color: #ffffff;
+  color: #333333;
+  width: 400px;
+  min-height: 100px;
+  max-height: 600px;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  box-sizing: border-box;
+}
+
+/* 标签项样式 */
 .tab-item {
   display: flex;
   align-items: center;
   padding: 8px;
   border-bottom: 1px solid #eee;
   gap: 12px;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
+  cursor: pointer;
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.tab-item:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
 }
 
 .tab-item:hover {
   background-color: #f5f5f5;
-}
-
-.tab-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
 }
 
 .tab-title {
@@ -34,7 +60,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #333;
+  color: inherit;
 }
 
 .favicon {
@@ -44,84 +70,110 @@
   border-radius: 2px;
 }
 
+/* 时间标签样式 */
 .tab-time {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 3px;
   flex-shrink: 0;
   font-weight: 500;
+  border: 1px solid transparent;
 }
 
 .recent {
-  background-color: #e8f5e9;
-  color: #2e7d32;
+  background-color: #f0f9eb;
+  color: #67c23a;
+  border-color: #c2e7b0;
 }
 
 .medium {
-  background-color: #fff3e0;
-  color: #f57c00;
+  background-color: #fdf6ec;
+  color: #e6a23c;
+  border-color: #f5dab1;
 }
 
 .old {
-  background-color: #ffebee;
-  color: #c62828;
-}
-
-body {
-  width: 400px;
-  margin: 0;
-  padding: 10px;
-  font-size: 14px;
-  color: #333;
-}
-
-.message-item {
-  display: flex;
-  align-items: center;
-  padding: 8px;
-  border-bottom: 1px solid #eee;
-}
-
-.message-icon {
-  width: 24px;
-  height: 24px;
-  margin-right: 12px;
-  flex-shrink: 0;
-  border-radius: 4px;
-  object-fit: cover;
-}
-
-.message-content {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  margin-right: 12px;
-}
-
-.message-time {
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 12px;
-  flex-shrink: 0;
-  font-weight: 500;
-}
-
-/* 时间样式-tag形式 */
-.time-recent {
-  background-color: #f0f9eb;
-  color: #67c23a;
-  border: 1px solid #c2e7b0;
-}
-
-.time-today {
-  background-color: #fdf6ec;
-  color: #e6a23c;
-  border: 1px solid #f5dab1;
-}
-
-.time-old {
   background-color: #fef0f0;
   color: #f56c6c;
-  border: 1px solid #fbc4c4;
+  border-color: #fbc4c4;
+}
+
+.no-tabs {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* 深色模式 */
+@media (prefers-color-scheme: dark) {
+  html,
+  body {
+    background-color: #1a1a1a;
+  }
+
+  .popup-container {
+    background-color: #1a1a1a;
+    color: #e0e0e0;
+  }
+
+  .tab-item {
+    border-bottom: 1px solid #333;
+  }
+
+  .tab-item:hover {
+    background-color: #2a2a2a;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #2a2a2a;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #555;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #666;
+  }
+
+  .recent {
+    background-color: rgba(103, 194, 58, 0.1);
+    color: #95d475;
+    border-color: #67c23a;
+  }
+
+  .medium {
+    background-color: rgba(230, 162, 60, 0.1);
+    color: #e6a23c;
+    border-color: #e6a23c;
+  }
+
+  .old {
+    background-color: rgba(245, 108, 108, 0.1);
+    color: #f56c6c;
+    border-color: #f56c6c;
+  }
+
+  .no-tabs {
+    color: #999;
+  }
 }
