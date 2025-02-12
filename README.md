@@ -41,4 +41,7 @@ This extension:
 
 ## Screenshots
 
-[Add screenshots here showing both light and dark modes]
+<img width="410" alt="image" src="https://github.com/user-attachments/assets/114c435b-51e5-4b7b-afa4-e45f4159ff68" />
+
+<img width="410" alt="image" src="https://github.com/user-attachments/assets/ee0a7d82-186e-4269-bede-08521ad639f0" />
+
