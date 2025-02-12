@@ -15,7 +15,7 @@
     "message": "未激活阈值（秒）"
   },
   "appName": {
-    "message": "Tab Graveyard",
+    "message": "标签墓地",
     "description": "扩展名称"
   },
   "appDesc": {
@@ -59,5 +59,9 @@
         "example": "3"
       }
     }
+  },
+  "appDescription": {
+    "message": "时间是最深邃的记录者，它悄然编织着我们数字世界的每一个瞬间。",
+    "description": "扩展的哲理描述"
   }
 }

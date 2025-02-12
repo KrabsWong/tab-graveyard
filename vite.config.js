@@ -14,11 +14,24 @@ function copyLocales() {
   };
 }
 
+// 复制样式文件到 dist
+function copyStyles() {
+  return {
+    name: 'copy-styles',
+    closeBundle() {
+      fs.ensureDirSync('dist/styles');
+      fs.copySync('src/styles/global.css', 'dist/styles/global.css');
+      fs.copySync('src/styles/app.css', 'dist/styles/app.css');
+    }
+  };
+}
+
 export default defineConfig({
   plugins: [
     vue(),
     chromeExtension(),
-    copyLocales()
+    copyLocales(),
+    copyStyles()
   ],
   build: {
     outDir: 'dist',
@@ -27,15 +40,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         manifest: resolve(__dirname, 'src/manifest.json')
-      },
-      output: {
-        assetFileNames: (assetInfo) => {
-          const cssFileName = 'style.css';
-          if (assetInfo.name.endsWith('.css')) {
-            return cssFileName;
-          }
-          return '[name].[hash][extname]';
-        }
       }
     }
   },

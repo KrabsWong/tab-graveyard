@@ -59,5 +59,9 @@
         "example": "3"
       }
     }
+  },
+  "appDescription": {
+    "message": "Time is the most profound recorder, quietly weaving every moment of our digital existence.",
+    "description": "Philosophical description of the extension"
   }
 }

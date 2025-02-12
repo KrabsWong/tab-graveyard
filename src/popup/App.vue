@@ -1,5 +1,9 @@
 <template>
   <div class="popup-container">
+    <div class="header">
+      <h1 class="title">{{ getMessage('appName') }}</h1>
+      <p class="description">{{ getMessage('appDescription') }}</p>
+    </div>
     <div class="tab-list">
       <div v-if="tabs.length === 0" class="no-tabs">
         {{ getMessage('loading') }}
@@ -11,10 +15,15 @@
           :alt="getHostname(tab.url)"
           @error="handleImageError"
         />
-        <div class="tab-title" :title="tab.title">
-          {{ tab.title }}
+        <div class="tab-content">
+          <div class="tab-title" :title="tab.title">
+            {{ tab.title }}
+          </div>
+          <div class="tab-domain">
+            {{ getHostname(tab.url) }}
+          </div>
         </div>
-        <div :class="['tab-time', getTimeClass(tab.lastAccessed)]">
+        <div :class="['time-badge', getTimeClass(tab.lastAccessed)]">
           {{ formatTime(tab.lastAccessed) }}
         </div>
       </div>
@@ -96,11 +105,11 @@ export default {
 
     const getTimeClass = (timestamp) => {
       const minutes = Math.floor((Date.now() - timestamp) / 1000 / 60)
-      if (minutes < 1) return 'now'
+      if (minutes < 1) return 'time-now'
       const hours = minutes / 60
-      if (hours < 1) return 'recent'
-      if (hours < 24) return 'medium'
-      return 'old'
+      if (hours < 1) return 'time-recent'
+      if (hours < 24) return 'time-medium'
+      return 'time-old'
     }
 
     const activateTab = (tabId) => {
@@ -144,175 +153,5 @@ export default {
 </script>
 
 <style>
-.popup-container {
-  background-color: #ffffff;
-  color: #333333;
-  width: 100%;
-  height: 100vh;
-  min-width: 400px;
-  max-width: 600px;
-  max-height: 600px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .popup-container {
-    background-color: #1a1a1a;
-    color: #e0e0e0;
-  }
-}
-
-.tab-list {
-  height: 100%;
-  overflow-y: auto;
-  padding: 8px;
-  box-sizing: border-box;
-}
-
-/* 滚动条样式 */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #888;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #555;
-}
-
-@media (prefers-color-scheme: dark) {
-  ::-webkit-scrollbar-track {
-    background: #2a2a2a;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    background: #555;
-  }
-
-  ::-webkit-scrollbar-thumb:hover {
-    background: #666;
-  }
-}
-
-.tab-item {
-  display: flex;
-  align-items: center;
-  padding: 8px;
-  border-bottom: 1px solid #eee;
-  gap: 12px;
-  transition: all 0.2s;
-  cursor: pointer;
-  border-radius: 6px;
-}
-
-@media (prefers-color-scheme: dark) {
-  .tab-item {
-    border-bottom: 1px solid #333;
-  }
-
-  .tab-item:hover {
-    background-color: #2a2a2a;
-  }
-}
-
-.tab-item:hover {
-  background-color: #f5f5f5;
-}
-
-.tab-title {
-  flex: 1;
-  font-size: 13px;
-  line-height: 1.4;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: inherit;
-}
-
-.favicon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  border-radius: 2px;
-}
-
-.tab-time {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  font-weight: 500;
-  border: 1px solid transparent;
-}
-
-.now {
-  background-color: #e1f3d8;
-  color: #529b2e;
-  border-color: #b3e19d;
-}
-
-@media (prefers-color-scheme: dark) {
-  .now {
-    background-color: rgba(82, 155, 46, 0.15);
-    color: #7ec050;
-    border-color: #529b2e;
-  }
-}
-
-.recent {
-  background-color: #f0f9eb;
-  color: #67c23a;
-  border-color: #c2e7b0;
-}
-
-.medium {
-  background-color: #fdf6ec;
-  color: #e6a23c;
-  border-color: #f5dab1;
-}
-
-.old {
-  background-color: #fef0f0;
-  color: #f56c6c;
-  border-color: #fbc4c4;
-}
-
-@media (prefers-color-scheme: dark) {
-  .recent {
-    background-color: rgba(103, 194, 58, 0.1);
-    color: #95d475;
-    border-color: #67c23a;
-  }
-
-  .medium {
-    background-color: rgba(230, 162, 60, 0.1);
-    color: #e6a23c;
-    border-color: #e6a23c;
-  }
-
-  .old {
-    background-color: rgba(245, 108, 108, 0.1);
-    color: #f56c6c;
-    border-color: #f56c6c;
-  }
-}
-
-.no-tabs {
-  padding: 20px;
-  text-align: center;
-  color: #666;
-}
-
-@media (prefers-color-scheme: dark) {
-  .no-tabs {
-    color: #999;
-  }
-}
+@import '../styles/app.css';
 </style> 
