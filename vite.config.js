@@ -9,7 +9,7 @@ function copyLocales() {
   return {
     name: 'copy-locales',
     closeBundle() {
-      fs.copySync('src/locales', 'dist/locales');
+      fs.copySync('src/_locales', 'dist/_locales');
     }
   };
 }
