@@ -80,17 +80,9 @@ body {
   border: 1px solid transparent;
 }
 .now {
-  background-color: #e1f3d8;
-  color: #529b2e;
-  border-color: #b3e19d;
-}
-
-@media (prefers-color-scheme: dark) {
-  .now {
-    background-color: rgba(82, 155, 46, 0.15);
-    color: #7ec050;
-    border-color: #529b2e;
-  }
+  background-color: #e0b3e0;
+  color: #6a2c6a;
+  border-color: #800080;
 }
 
 .recent {
