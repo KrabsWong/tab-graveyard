@@ -1,0 +1,17 @@
+{
+  "extensionDescription": {
+    "message": "Monitor and track inactive tabs across Chrome windows"
+  },
+  "inactiveTabs": {
+    "message": "Inactive Tabs"
+  },
+  "duration": {
+    "message": "Duration"
+  },
+  "configTitle": {
+    "message": "Configuration"
+  },
+  "inactiveThreshold": {
+    "message": "Inactive threshold (seconds)"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Graveyard",
+  "version": "1.0.0",
+  "description": "Chrome extension to monitor inactive tabs",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "tabGroups"
+  ],
+  "background": {
+    "service_worker": "background/background.js"
+  },
+  "action": {
+    "default_popup": "popup/index.html"
+  }
+}
