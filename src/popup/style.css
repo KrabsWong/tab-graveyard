@@ -79,6 +79,19 @@ body {
   font-weight: 500;
   border: 1px solid transparent;
 }
+.now {
+  background-color: #e1f3d8;
+  color: #529b2e;
+  border-color: #b3e19d;
+}
+
+@media (prefers-color-scheme: dark) {
+  .now {
+    background-color: rgba(82, 155, 46, 0.15);
+    color: #7ec050;
+    border-color: #529b2e;
+  }
+}
 
 .recent {
   background-color: #f0f9eb;

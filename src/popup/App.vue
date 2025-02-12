@@ -2,7 +2,7 @@
   <div class="popup-container">
     <div class="tab-list">
       <div v-if="tabs.length === 0" class="no-tabs">
-        加载中...
+        {{ getMessage('loading') }}
       </div>
       <div v-for="tab in tabs" :key="tab.id" class="tab-item" @click="activateTab(tab.id)">
         <img 
@@ -28,6 +28,19 @@ import { ref, onMounted } from 'vue'
 export default {
   setup() {
     const tabs = ref([])
+
+    const getMessage = (key, substitutions = []) => {
+      const message = chrome.i18n.getMessage(key, substitutions)
+      if (!message) {
+        // 如果获取失败，返回一个后备显示
+        if (key === "timeAgoNow") return "now"
+        if (key === 'timeAgoMinutes') return `${substitutions[0]} mins ago`
+        if (key === 'timeAgoHours') return `${substitutions[0]} hrs ago`
+        if (key === 'timeAgoDays') return `${substitutions[0]} days ago`
+        return key
+      }
+      return message
+    }
 
     const getDefaultIcon = () => {
       return 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" fill="%23ddd"/></svg>'
@@ -56,21 +69,30 @@ export default {
     const formatTime = (timestamp) => {
       const minutes = Math.floor((Date.now() - timestamp) / 1000 / 60)
       
+      if (minutes < 1) {
+        return getMessage('timeAgoNow')
+      }
+      
       if (minutes < 60) {
-        return `${minutes}分钟前`
+        const count = minutes.toString()
+        return getMessage('timeAgoMinutes', [count])
       }
       
       const hours = Math.floor(minutes / 60)
       if (hours < 24) {
-        return `${hours}小时前`
+        const count = hours.toString()
+        return getMessage('timeAgoHours', [count])
       }
       
       const days = Math.floor(hours / 24)
-      return `${days}天前`
+      const count = days.toString()
+      return getMessage('timeAgoDays', [count])
     }
 
     const getTimeClass = (timestamp) => {
-      const hours = (Date.now() - timestamp) / 1000 / 60 / 60
+      const minutes = Math.floor((Date.now() - timestamp) / 1000 / 60)
+      if (minutes < 1) return 'now'
+      const hours = minutes / 60
       if (hours < 1) return 'recent'
       if (hours < 24) return 'medium'
       return 'old'
@@ -81,13 +103,10 @@ export default {
     }
 
     onMounted(async () => {
-      console.log('Component mounted')
       try {
         const queryInfo = {}
         const allTabs = await chrome.tabs.query(queryInfo)
-        console.log('Fetched tabs:', allTabs)
         
-        // 获取每个标签页的详细信息，包括lastAccessed，并过滤掉特殊标签页
         const tabsWithTime = await Promise.all(
           allTabs
             .filter(isNormalTab)
@@ -101,9 +120,7 @@ export default {
         )
         
         tabs.value = tabsWithTime.sort((a, b) => b.lastAccessed - a.lastAccessed)
-        console.log('Processed tabs:', tabs.value)
       } catch (error) {
-        console.error('Error fetching tabs:', error)
       }
     })
 
@@ -114,7 +131,8 @@ export default {
       handleImageError,
       getHostname,
       getDefaultIcon,
-      activateTab
+      activateTab,
+      getMessage
     }
   }
 }
@@ -227,6 +245,20 @@ export default {
   flex-shrink: 0;
   font-weight: 500;
   border: 1px solid transparent;
+}
+
+.now {
+  background-color: #e1f3d8;
+  color: #529b2e;
+  border-color: #b3e19d;
+}
+
+@media (prefers-color-scheme: dark) {
+  .now {
+    background-color: rgba(82, 155, 46, 0.15);
+    color: #7ec050;
+    border-color: #529b2e;
+  }
 }
 
 .recent {

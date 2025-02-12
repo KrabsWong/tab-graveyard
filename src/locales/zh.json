@@ -1,0 +1,63 @@
+{
+  "extensionDescription": {
+    "message": "监控并追踪Chrome窗口中未激活的标签页"
+  },
+  "inactiveTabs": {
+    "message": "未激活标签页"
+  },
+  "duration": {
+    "message": "持续时间"
+  },
+  "configTitle": {
+    "message": "配置"
+  },
+  "inactiveThreshold": {
+    "message": "未激活阈值（秒）"
+  },
+  "appName": {
+    "message": "Tab Graveyard",
+    "description": "扩展名称"
+  },
+  "appDesc": {
+    "message": "通过追踪标签页的最后访问时间来高效管理标签页。支持深色模式并提供标签页使用时间的可视化指示。",
+    "description": "扩展描述"
+  },
+  "loading": {
+    "message": "加载中...",
+    "description": "加载提示"
+  },
+  "timeAgoNow": {
+    "message": "刚刚",
+    "description": "刚刚"
+  },
+  "timeAgoMinutes": {
+    "message": "$COUNT$ 分钟前",
+    "description": "分钟数",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "5"
+      }
+    }
+  },
+  "timeAgoHours": {
+    "message": "$COUNT$ 小时前",
+    "description": "小时数",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "2"
+      }
+    }
+  },
+  "timeAgoDays": {
+    "message": "$COUNT$ 天前",
+    "description": "天数",
+    "placeholders": {
+      "count": {
+        "content": "$1",
+        "example": "3"
+      }
+    }
+  }
+}

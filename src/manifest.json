@@ -5,6 +5,7 @@
   "description": "Manage your tabs efficiently by tracking their last access time. Supports dark mode and provides visual indicators for tab age.",
   "author": "KrabsWong",
   "homepage_url": "https://github.com/KrabsWong/tab-graveyard",
+  "default_locale": "en",
   "permissions": [
     "tabs",
     "activeTab",
@@ -14,19 +15,7 @@
     "service_worker": "background/background.js"
   },
   "action": {
-    "default_popup": "popup/index.html",
-    "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
-    }
-  },
-  "icons": {
-    "16": "icons/icon16.png",
-    "32": "icons/icon32.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "default_popup": "popup/index.html"
   },
   "minimum_chrome_version": "88",
   "offline_enabled": true
