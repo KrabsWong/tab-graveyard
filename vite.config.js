@@ -26,12 +26,23 @@ function copyStyles() {
   };
 }
 
+// 复制assets目录到dist
+function copyAssets() {
+  return {
+    name: 'copy-assets',
+    closeBundle() {
+      fs.copySync('src/assets', 'dist/assets');
+    }
+  };
+}
+
 export default defineConfig({
   plugins: [
     vue(),
     chromeExtension(),
     copyLocales(),
-    copyStyles()
+    copyStyles(),
+    copyAssets()
   ],
   build: {
     outDir: 'dist',
