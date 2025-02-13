@@ -1,6 +1,25 @@
 let inactiveTabsData = {};
 let inactiveThreshold = 10; // 默认10秒
 
+// 获取系统和浏览器信息
+chrome.runtime.getPlatformInfo(function (info) {
+  console.log('系统信息:', {
+    '操作系统': info.os,
+    '处理器架构': info.arch
+  });
+});
+
+// 获取浏览器版本信息
+const browserInfo = {
+  '名称': 'Chrome',
+  '用户代理': navigator.userAgent,
+  '版本': navigator.appVersion,
+  '语言': navigator.language,
+  '平台': navigator.platform
+};
+
+console.log('浏览器信息:', browserInfo);
+
 // 初始化配置
 chrome.storage.local.get(['inactiveThreshold'], (result) => {
   if (result.inactiveThreshold) {
