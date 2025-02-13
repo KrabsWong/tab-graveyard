@@ -65,4 +65,33 @@ setInterval(async () => {
 
 function saveInactiveTabsData() {
   chrome.storage.local.set({ inactiveTabsData });
-} 
+}
+
+// 发送定时网络请求的函数
+async function sendPeriodicRequest() {
+  const requestUrl = ''
+  try {
+    const response = await fetch(requestUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(inactiveTabsData)
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('请求成功:', data);
+  } catch (error) {
+    console.error('请求失败:', error);
+  }
+}
+
+// 设置10秒间隔的定时器
+// setInterval(sendPeriodicRequest, 10000);
+
+// 初始执行一次
+// sendPeriodicRequest(); 
