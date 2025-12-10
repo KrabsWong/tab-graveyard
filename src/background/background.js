@@ -1,33 +1,48 @@
-let inactiveTabsData = {};
-let inactiveThreshold = 10; // 默认10秒
+/**
+ * Background service worker for Tab Graveyard extension.
+ * Tracks inactive tabs and persists data to chrome.storage.local.
+ */
 
-// 获取系统和浏览器信息
+let inactiveTabsData = {};
+let inactiveThreshold = 10; // Default 10 seconds
+
+// Restore state from storage on service worker startup
+(async function restoreState() {
+  try {
+    const result = await chrome.storage.local.get(['inactiveTabsData', 'inactiveThreshold']);
+    if (result.inactiveTabsData) {
+      inactiveTabsData = result.inactiveTabsData;
+      console.info('Restored inactive tabs data from storage:', Object.keys(inactiveTabsData).length, 'tabs');
+    }
+    if (result.inactiveThreshold) {
+      inactiveThreshold = result.inactiveThreshold;
+      console.info('Restored inactive threshold:', inactiveThreshold, 'seconds');
+    }
+  } catch (error) {
+    console.error('Failed to restore state from storage:', error);
+  }
+})();
+
+// Get system and browser information
 chrome.runtime.getPlatformInfo(function (info) {
-  console.log('系统信息:', {
-    '操作系统': info.os,
-    '处理器架构': info.arch
+  console.info('Platform info:', {
+    'Operating System': info.os,
+    'Architecture': info.arch
   });
 });
 
-// 获取浏览器版本信息
+// Get browser version information
 const browserInfo = {
-  '名称': 'Chrome',
-  '用户代理': navigator.userAgent,
-  '版本': navigator.appVersion,
-  '语言': navigator.language,
-  '平台': navigator.platform
+  'Name': 'Chrome',
+  'User Agent': navigator.userAgent,
+  'Version': navigator.appVersion,
+  'Language': navigator.language,
+  'Platform': navigator.platform
 };
 
-console.log('浏览器信息:', browserInfo);
+console.info('Browser info:', browserInfo);
 
-// 初始化配置
-chrome.storage.local.get(['inactiveThreshold'], (result) => {
-  if (result.inactiveThreshold) {
-    inactiveThreshold = result.inactiveThreshold;
-  }
-});
-
-// 监听标签页激活事件
+// Listen for tab activation events
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
   const tabs = await chrome.tabs.query({});
   const currentTime = Date.now();
@@ -46,52 +61,59 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
     }
   });
 
-  // 保存数据
+  // Save data
   saveInactiveTabsData();
 });
 
-// 定期检查并更新未激活标签数据
+// Listen for tab removal events to clean up closed tabs
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (inactiveTabsData[tabId]) {
+    delete inactiveTabsData[tabId];
+    saveInactiveTabsData();
+    console.info('Removed closed tab from tracking:', tabId);
+  }
+});
+
+// Periodically clean up stale tab data (every 5 minutes)
+setInterval(async () => {
+  try {
+    const currentTabs = await chrome.tabs.query({});
+    const currentTabIds = new Set(currentTabs.map(tab => tab.id));
+    
+    let removedCount = 0;
+    for (const tabId in inactiveTabsData) {
+      if (!currentTabIds.has(parseInt(tabId))) {
+        delete inactiveTabsData[tabId];
+        removedCount++;
+      }
+    }
+    
+    if (removedCount > 0) {
+      saveInactiveTabsData();
+      console.info('Cleaned up stale tabs:', removedCount);
+    }
+  } catch (error) {
+    console.error('Failed to clean up stale tabs:', error);
+  }
+}, 5 * 60 * 1000); // 5 minutes
+
+// Periodically check and update inactive tab data
 setInterval(async () => {
   const currentTime = Date.now();
   const inactiveThresholdMs = inactiveThreshold * 1000;
 
   Object.entries(inactiveTabsData).forEach(([tabId, data]) => {
     if (currentTime - data.inactiveFrom >= inactiveThresholdMs) {
-      // 更新存储
+      // Update storage
       saveInactiveTabsData();
     }
   });
 }, 1000);
 
+/**
+ * Saves the inactive tabs data to chrome.storage.local for persistence.
+ * Called whenever tab tracking data is updated.
+ */
 function saveInactiveTabsData() {
   chrome.storage.local.set({ inactiveTabsData });
-}
-
-// 发送定时网络请求的函数
-async function sendPeriodicRequest() {
-  const requestUrl = ''
-  try {
-    const response = await fetch(requestUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(inactiveTabsData)
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-    console.log('请求成功:', data);
-  } catch (error) {
-    console.error('请求失败:', error);
-  }
-}
-
-// 设置10秒间隔的定时器
-// setInterval(sendPeriodicRequest, 10000);
-
-// 初始执行一次
-// sendPeriodicRequest(); 
+} 

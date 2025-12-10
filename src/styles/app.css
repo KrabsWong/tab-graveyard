@@ -1,7 +1,36 @@
-/* 弹出窗口容器 */
+/* CSS Design Tokens */
+:root {
+  /* Colors */
+  --color-background: #ffffff;
+  --color-text: #333333;
+  --color-text-muted: #666666;
+  --color-text-light: #999999;
+  --color-primary: #2c3e50;
+  --color-border: #eeeeee;
+  --color-hover: #f5f5f5;
+  
+  /* Time badge colors */
+  --color-time-now-bg: #e0b3e0;
+  --color-time-now-text: #6a2c6a;
+  --color-time-now-border: #800080;
+  
+  --color-time-recent-bg: #f0f9eb;
+  --color-time-recent-text: #67c23a;
+  --color-time-recent-border: #c2e7b0;
+  
+  --color-time-medium-bg: #fdf6ec;
+  --color-time-medium-text: #e6a23c;
+  --color-time-medium-border: #f5dab1;
+  
+  --color-time-old-bg: #fef0f0;
+  --color-time-old-text: #f56c6c;
+  --color-time-old-border: #fbc4c4;
+}
+
+/* Popup container */
 .popup-container {
-  background-color: #ffffff;
-  color: #333333;
+  background-color: var(--color-background);
+  color: var(--color-text);
   min-width: 400px;
   max-width: 600px;
   display: flex;
@@ -10,23 +39,23 @@
   overflow-y: auto;
 }
 
-/* 头部样式 */
+/* Header styles */
 .header {
   text-align: center;
   margin-bottom: 20px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .title {
   font-size: 1.5em;
-  color: #2c3e50;
+  color: var(--color-primary);
   margin: 0 0 8px 0;
 }
 
 .description {
   font-size: 0.9em;
-  color: #666;
+  color: var(--color-text-muted);
   margin: 0;
   line-height: 1.4;
 }
@@ -42,7 +71,7 @@
   display: flex;
   align-items: flex-start;
   padding: 8px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--color-border);
   gap: 12px;
   transition: all 0.2s;
   cursor: pointer;
@@ -56,13 +85,19 @@
 }
 
 .tab-item:hover {
-  background-color: #f5f5f5;
+  background-color: var(--color-hover);
+}
+
+.tab-item:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  background-color: var(--color-hover);
 }
 
 .favicon {
   width: 32px;
   height: 32px;
-  flex: 0 0 16px;
+  flex: 0 0 32px;
   border-radius: 2px;
   margin-top: 2px;
 }
@@ -86,7 +121,7 @@
 
 .tab-domain {
   font-size: 12px;
-  color: #666;
+  color: var(--color-text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -95,10 +130,44 @@
 .no-tabs {
   padding: 20px;
   text-align: center;
-  color: #666;
+  color: var(--color-text-muted);
 }
 
-/* 时间标签样式 */
+.empty-state {
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.empty-state-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.empty-state-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--color-text);
+  margin-bottom: 8px;
+}
+
+.empty-state-hint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.error-message {
+  padding: 12px;
+  margin: 0 0 12px 0;
+  background-color: #fef0f0;
+  color: #f56c6c;
+  border: 1px solid #fbc4c4;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 14px;
+}
+
+/* Time badge styles */
 .time-badge {
   font-size: 11px;
   padding: 2px 6px;
@@ -110,85 +179,54 @@
 }
 
 .time-now {
-  background-color: #e0b3e0;
-  color: #6a2c6a;
-  border-color: #800080;
+  background-color: var(--color-time-now-bg);
+  color: var(--color-time-now-text);
+  border-color: var(--color-time-now-border);
 }
 
 .time-recent {
-  background-color: #f0f9eb;
-  color: #67c23a;
-  border-color: #c2e7b0;
+  background-color: var(--color-time-recent-bg);
+  color: var(--color-time-recent-text);
+  border-color: var(--color-time-recent-border);
 }
 
 .time-medium {
-  background-color: #fdf6ec;
-  color: #e6a23c;
-  border-color: #f5dab1;
+  background-color: var(--color-time-medium-bg);
+  color: var(--color-time-medium-text);
+  border-color: var(--color-time-medium-border);
 }
 
 .time-old {
-  background-color: #fef0f0;
-  color: #f56c6c;
-  border-color: #fbc4c4;
+  background-color: var(--color-time-old-bg);
+  color: var(--color-time-old-text);
+  border-color: var(--color-time-old-border);
 }
 
-/* 深色模式 */
+/* Dark mode */
 @media (prefers-color-scheme: dark) {
-  .popup-container {
-    background-color: #1a1a1a;
-    color: #ffffff;
-  }
-
-  .header {
-    border-bottom-color: #333;
-  }
-
-  .title {
-    color: #ffffff;
-  }
-
-  .description {
-    color: #aaa;
-  }
-
-  .tab-item {
-    border-bottom-color: #333;
-  }
-
-  .tab-item:hover {
-    background-color: #2a2a2a;
-  }
-
-  .tab-domain {
-    color: #999;
-  }
-
-  .no-tabs {
-    color: #999;
-  }
-
-  .time-recent {
-    background-color: rgba(103, 194, 58, 0.1);
-    color: #95d475;
-    border-color: #67c23a;
-  }
-
-  .time-medium {
-    background-color: rgba(230, 162, 60, 0.1);
-    color: #e6a23c;
-    border-color: #e6a23c;
-  }
-
-  .time-old {
-    background-color: rgba(245, 108, 108, 0.1);
-    color: #f56c6c;
-    border-color: #f56c6c;
-  }
-
-  .time-now {
-    background-color: rgba(128, 0, 128, 0.1);
-    color: #e0b3e0;
-    border-color: #800080;
+  :root {
+    --color-background: #1a1a1a;
+    --color-text: #ffffff;
+    --color-text-muted: #999999;
+    --color-primary: #ffffff;
+    --color-border: #333333;
+    --color-hover: #2a2a2a;
+    
+    /* Dark mode time badge colors */
+    --color-time-now-bg: rgba(128, 0, 128, 0.1);
+    --color-time-now-text: #e0b3e0;
+    --color-time-now-border: #800080;
+    
+    --color-time-recent-bg: rgba(103, 194, 58, 0.1);
+    --color-time-recent-text: #95d475;
+    --color-time-recent-border: #67c23a;
+    
+    --color-time-medium-bg: rgba(230, 162, 60, 0.1);
+    --color-time-medium-text: #e6a23c;
+    --color-time-medium-border: #e6a23c;
+    
+    --color-time-old-bg: rgba(245, 108, 108, 0.1);
+    --color-time-old-text: #f56c6c;
+    --color-time-old-border: #f56c6c;
   }
 }
