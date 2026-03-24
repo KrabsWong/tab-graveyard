@@ -63,5 +63,83 @@
   "appDescription": {
     "message": "时间是最深邃的记录者，它悄然编织着我们数字世界的每一个瞬间。",
     "description": "扩展的哲理描述"
+  },
+  "emptyStateTitle": {
+    "message": "没有打开的普通网页标签页",
+    "description": "没有普通标签页时的提示信息"
+  },
+  "emptyStateHint": {
+    "message": "您的所有标签页都是浏览器内部页面（设置、扩展程序等）",
+    "description": "解释为什么没有显示标签页"
+  },
+  "ariaSwitchToTab": {
+    "message": "切换到标签页：$TITLE$，上次访问 $TIME$",
+    "description": "标签项的ARIA标签",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "GitHub"
+      },
+      "time": {
+        "content": "$2",
+        "example": "5 分钟前"
+      }
+    }
+  },
+  "ariaLastAccessed": {
+    "message": "上次访问 $TIME$",
+    "description": "时间徽章的ARIA标签",
+    "placeholders": {
+      "time": {
+        "content": "$1",
+        "example": "5 分钟前"
+      }
+    }
+  },
+  "loadError": {
+    "message": "加载标签页失败。请刷新或检查权限。",
+    "description": "标签页加载失败时的错误信息"
+  },
+  "tabNoLongerExists": {
+    "message": "标签页已不存在",
+    "description": "尝试激活已关闭标签页时的错误信息"
+  },
+  "blacklistTitle": {
+    "message": "域名黑名单",
+    "description": "域名黑名单配置标题"
+  },
+  "blacklistDescription": {
+    "message": "来自这些域名的标签页将被隐藏。使用 * 作为通配符（例如：*.example.com）",
+    "description": "域名黑名单功能说明"
+  },
+  "blacklistPlaceholder": {
+    "message": "输入域名模式（例如：*.example.com）",
+    "description": "黑名单输入框占位符"
+  },
+  "blacklistAdd": {
+    "message": "添加",
+    "description": "添加到黑名单按钮"
+  },
+  "blacklistEmpty": {
+    "message": "没有黑名单域名",
+    "description": "黑名单为空时的提示"
+  },
+  "blacklistRemove": {
+    "message": "从黑名单中移除 $PATTERN$",
+    "description": "移除按钮的ARIA标签",
+    "placeholders": {
+      "pattern": {
+        "content": "$1",
+        "example": "*.example.com"
+      }
+    }
+  },
+  "blacklistCancel": {
+    "message": "取消",
+    "description": "取消按钮文本"
+  },
+  "blacklistConfirm": {
+    "message": "确认",
+    "description": "确认按钮文本"
   }
 }

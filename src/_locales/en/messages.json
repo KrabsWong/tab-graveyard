@@ -63,5 +63,83 @@
   "appDescription": {
     "message": "Time is the most profound recorder, quietly weaving every moment of our digital existence.",
     "description": "Philosophical description of the extension"
+  },
+  "emptyStateTitle": {
+    "message": "No regular web tabs open",
+    "description": "Message shown when no regular tabs are open"
+  },
+  "emptyStateHint": {
+    "message": "All your tabs are browser-internal pages (settings, extensions, etc.)",
+    "description": "Hint explaining why no tabs are shown"
+  },
+  "ariaSwitchToTab": {
+    "message": "Switch to tab: $TITLE$, last accessed $TIME$",
+    "description": "ARIA label for tab item",
+    "placeholders": {
+      "title": {
+        "content": "$1",
+        "example": "GitHub"
+      },
+      "time": {
+        "content": "$2",
+        "example": "5 mins ago"
+      }
+    }
+  },
+  "ariaLastAccessed": {
+    "message": "Last accessed $TIME$",
+    "description": "ARIA label for time badge",
+    "placeholders": {
+      "time": {
+        "content": "$1",
+        "example": "5 mins ago"
+      }
+    }
+  },
+  "loadError": {
+    "message": "Failed to load tabs. Please refresh or check permissions.",
+    "description": "Error message when tab loading fails"
+  },
+  "tabNoLongerExists": {
+    "message": "Tab no longer exists",
+    "description": "Error message when trying to activate a closed tab"
+  },
+  "blacklistTitle": {
+    "message": "Domain Blacklist",
+    "description": "Title for domain blacklist configuration"
+  },
+  "blacklistDescription": {
+    "message": "Tabs from these domains will be hidden. Use * for wildcards (e.g., *.example.com)",
+    "description": "Description of domain blacklist feature"
+  },
+  "blacklistPlaceholder": {
+    "message": "Enter domain pattern (e.g., *.example.com)",
+    "description": "Placeholder text for blacklist input"
+  },
+  "blacklistAdd": {
+    "message": "Add",
+    "description": "Button to add domain to blacklist"
+  },
+  "blacklistEmpty": {
+    "message": "No domains blacklisted",
+    "description": "Message shown when blacklist is empty"
+  },
+  "blacklistRemove": {
+    "message": "Remove $PATTERN$ from blacklist",
+    "description": "ARIA label for remove button",
+    "placeholders": {
+      "pattern": {
+        "content": "$1",
+        "example": "*.example.com"
+      }
+    }
+  },
+  "blacklistCancel": {
+    "message": "Cancel",
+    "description": "Cancel button text"
+  },
+  "blacklistConfirm": {
+    "message": "Confirm",
+    "description": "Confirm button text"
   }
 }

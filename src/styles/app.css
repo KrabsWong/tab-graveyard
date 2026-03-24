@@ -202,6 +202,170 @@
   border-color: var(--color-time-old-border);
 }
 
+.modal-overlay {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  background: rgba(0, 0, 0, 0.75) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 999999 !important;
+}
+
+.modal-container {
+  background: #ffffff;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 90%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #eeeeee;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333333;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #666666;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.modal-close:hover {
+  background-color: #f5f5f5;
+  color: #333333;
+}
+
+.modal-body {
+  padding: 20px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.modal-description {
+  margin: 0 0 16px 0;
+  font-size: 13px;
+  color: #666666;
+  line-height: 1.5;
+}
+
+.blacklist-textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 10px;
+  border: 1px solid #dddddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: 'Courier New', Courier, monospace;
+  line-height: 1.5;
+  resize: vertical;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: #333333;
+}
+
+.blacklist-textarea:focus {
+  outline: none;
+  border-color: #2c3e50;
+  box-shadow: 0 0 0 2px rgba(44, 62, 80, 0.1);
+}
+
+.popup-container {
+  position: relative;
+}
+
+.settings-icon {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  padding: 4px;
+  margin: 0;
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  z-index: 10;
+  -webkit-appearance: none;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  display: inline-block;
+}
+
+.settings-icon:hover {
+  opacity: 0.7;
+}
+
+.settings-icon:focus {
+  outline: none;
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid #eeeeee;
+}
+
+.btn-cancel,
+.btn-confirm {
+  padding: 8px 20px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel {
+  background: transparent;
+  border: 1px solid #dddddd;
+  color: #333333;
+}
+
+.btn-cancel:hover {
+  background: #f5f5f5;
+}
+
+.btn-confirm {
+  background: #2c3e50;
+  border: 1px solid #2c3e50;
+  color: white;
+}
+
+.btn-confirm:hover {
+  opacity: 0.9;
+}
+
 /* Dark mode */
 @media (prefers-color-scheme: dark) {
   :root {
@@ -228,5 +392,63 @@
     --color-time-old-bg: rgba(245, 108, 108, 0.1);
     --color-time-old-text: #f56c6c;
     --color-time-old-border: #f56c6c;
+  }
+
+  .modal-overlay {
+    background: rgba(0, 0, 0, 0.85) !important;
+  }
+
+  .modal-container {
+    background: #2a2a2a;
+  }
+
+  .modal-header {
+    border-bottom-color: #444444;
+  }
+
+  .modal-title {
+    color: #ffffff;
+  }
+
+  .modal-close {
+    color: #999999;
+  }
+
+  .modal-close:hover {
+    background-color: #3a3a3a;
+    color: #ffffff;
+  }
+
+  .modal-body {
+    background: #2a2a2a;
+  }
+
+  .modal-description {
+    color: #999999;
+  }
+
+  .blacklist-textarea {
+    background: #1a1a1a;
+    border-color: #555555;
+    color: #ffffff;
+  }
+
+  .blacklist-textarea:focus {
+    border-color: #888888;
+    box-shadow: 0 0 0 2px rgba(136, 136, 136, 0.2);
+  }
+
+  .modal-footer {
+    border-top-color: #444444;
+  }
+
+  .btn-cancel {
+    background: transparent;
+    border-color: #555555;
+    color: #ffffff;
+  }
+
+  .btn-cancel:hover {
+    background: #3a3a3a;
   }
 }
