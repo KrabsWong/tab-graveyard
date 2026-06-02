@@ -665,7 +665,7 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
   today.setHours(0, 0, 0, 0);
   const shownToday = state.events.filter((event) => event.type === "resurface_shown" && event.createdAt >= today.getTime()).length;
   const lastShown = [...state.events].reverse().find((event) => event.type === "resurface_shown");
-  if (shownToday >= state.settings.resurfaceRule.maxPerDay) {
+  if (state.settings.resurfaceRule.maxPerDay > 0 && shownToday >= state.settings.resurfaceRule.maxPerDay) {
     logResurface("skip:max-per-day", { shownToday, maxPerDay: state.settings.resurfaceRule.maxPerDay });
     return;
   }

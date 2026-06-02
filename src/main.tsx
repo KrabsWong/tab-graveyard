@@ -186,6 +186,8 @@ const messages = {
     archiveTrustDescription: "Main archive policy for Ghost Tabs: manual click, preview first, or automatic archive.",
     resurfaceFrequencyDescription: "Maximum number of archived-memory suggestions Tab Graveyard may show per day.",
     resurfaceFrequencyOption: "At most {count} resurfacing suggestions per day.",
+    resurfaceFrequencyAlways: "Always resurface",
+    resurfaceFrequencyAlwaysDescription: "No daily limit. Matching pages can resurface whenever cooldown allows.",
     resurfaceCooldownDescription: "Minimum time between two resurfacing suggestions, even when more related archives match.",
     resurfaceCooldownOption: "Wait at least {hours} hours before showing another resurfacing suggestion.",
     domainBlacklist: "Domain Blacklist",
@@ -382,6 +384,8 @@ const messages = {
     archiveTrustDescription: "幽灵标签的主归档策略：手动点击、先预览，或自动归档。",
     resurfaceFrequencyDescription: "每天最多展示多少次归档记忆的主动唤醒提示。",
     resurfaceFrequencyOption: "每天最多展示 {count} 次主动唤醒提示。",
+    resurfaceFrequencyAlways: "始终唤醒",
+    resurfaceFrequencyAlwaysDescription: "不限制每日次数。只要命中相关归档，并满足冷却间隔，就可以继续提示。",
     resurfaceCooldownDescription: "两次主动唤醒之间至少间隔多久，即使命中了更多相关归档也不会连续弹出。",
     resurfaceCooldownOption: "至少等待 {hours} 小时后，才会展示下一次主动唤醒提示。",
     domainBlacklist: "域名黑名单",
@@ -1172,7 +1176,10 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             <SelectRow
               label={t.resurfaceFrequency}
               value={String(snapshot.settings.resurfaceRule.maxPerDay)}
-              options={["1", "3", "5"].map((count) => ({ value: count, label: count, description: interpolate(t.resurfaceFrequencyOption, { count }) }))}
+              options={[
+                ...["1", "3", "5", "10", "20", "50"].map((count) => ({ value: count, label: count, description: interpolate(t.resurfaceFrequencyOption, { count }) })),
+                { value: "0", label: t.resurfaceFrequencyAlways, description: t.resurfaceFrequencyAlwaysDescription }
+              ]}
               description={t.resurfaceFrequencyDescription}
               disabled={snapshot.settings.recordingPaused}
               showOptionDescription
