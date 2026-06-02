@@ -145,7 +145,7 @@ const messages = {
     resurfaceFrequency: "Resurface frequency",
     archiveTrust: "Archive trust stage",
     archivePreannounce: "Preannounce archive",
-    archivePreannounceDescription: "Create a visible archive preview before automatic or preview-stage archiving is confirmed.",
+    archivePreannounceDescription: "Only applies when the archive trust stage is Auto. Create a preview before automatic archiving runs.",
     language: "Language",
     languageDescription: "Use system language, Chinese, or English.",
     languageSystemDescription: "Follow Chrome or operating-system language when choosing the interface language.",
@@ -179,7 +179,7 @@ const messages = {
     ghostThreshold: "Ghost threshold",
     ghostThresholdDescription: "How long a normal, low-risk tab must stay inactive before it can become a Ghost Tab.",
     ghostThresholdOption: "{hours} hours without activity before a tab can be considered a ghost.",
-    archiveTrustDescription: "Controls how much confirmation is required before Ghost Tabs are archived.",
+    archiveTrustDescription: "Main archive policy for Ghost Tabs: manual click, preview first, or automatic archive.",
     resurfaceFrequencyDescription: "Maximum number of archived-memory suggestions Tab Graveyard may show per day.",
     resurfaceFrequencyOption: "At most {count} resurfacing suggestions per day.",
     domainBlacklist: "Domain Blacklist",
@@ -335,7 +335,7 @@ const messages = {
     resurfaceFrequency: "主动唤醒频率",
     archiveTrust: "归档信任阶段",
     archivePreannounce: "归档前预告",
-    archivePreannounceDescription: "自动归档或预览归档前，先展示一条可确认的归档预览。",
+    archivePreannounceDescription: "仅当归档信任阶段为自动时生效。自动归档执行前，先生成一条可确认的归档预览。",
     language: "界面语言",
     languageDescription: "跟随系统，或固定为中文/英文。",
     languageSystemDescription: "根据 Chrome 或系统语言自动选择界面语言。",
@@ -369,7 +369,7 @@ const messages = {
     ghostThreshold: "幽灵阈值",
     ghostThresholdDescription: "普通低风险标签需要多久未活跃，才可能被判定为幽灵标签。",
     ghostThresholdOption: "连续 {hours} 小时未活跃后，标签才可能进入幽灵标签。",
-    archiveTrustDescription: "控制幽灵标签进入归档前需要多少确认。",
+    archiveTrustDescription: "幽灵标签的主归档策略：手动点击、先预览，或自动归档。",
     resurfaceFrequencyDescription: "每天最多展示多少次归档记忆的主动唤醒提示。",
     resurfaceFrequencyOption: "每天最多展示 {count} 次主动唤醒提示。",
     domainBlacklist: "域名黑名单",
@@ -1127,6 +1127,13 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             onChange={(theme) => update({ theme: theme as SettingsType["theme"] })}
           />
           <SelectRow label={t.archiveTrust} value={snapshot.settings.archiveTrustStage} options={enumOptions("archiveTrust", ["manual", "preview", "auto"], language)} description={t.archiveTrustDescription} showOptionDescription onChange={(archiveTrustStage) => update({ archiveTrustStage: archiveTrustStage as SettingsType["archiveTrustStage"] })} />
+          <ToggleRow
+            label={t.archivePreannounce}
+            description={t.archivePreannounceDescription}
+            checked={snapshot.settings.archivePreannounce}
+            disabled={snapshot.settings.archiveTrustStage !== "auto"}
+            onChange={(archivePreannounce) => update({ archivePreannounce })}
+          />
           <SelectRow
             label={t.ghostThreshold}
             value={String(snapshot.settings.ghostThresholdHours)}
@@ -1144,7 +1151,6 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, maxPerDay: Number(value) } })}
           />
           <ToggleRow label={t.resurface} description={t.resurfaceDescription} checked={snapshot.settings.resurfaceEnabled} onChange={(resurfaceEnabled) => update({ resurfaceEnabled })} />
-          <ToggleRow label={t.archivePreannounce} description={t.archivePreannounceDescription} checked={snapshot.settings.archivePreannounce} onChange={(archivePreannounce) => update({ archivePreannounce })} />
         </CardContent>
       </Card>
         </TabsContent>
@@ -1701,13 +1707,13 @@ function SectionHeader({ title, description }: { title: string; description: str
   );
 }
 
-function ToggleRow({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
+function ToggleRow({ label, description, checked, disabled, onChange }: { label: string; description: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
   return (
-    <label className="flex items-center justify-between gap-4 rounded-md border p-2.5">
+    <label className={`flex items-center justify-between gap-4 rounded-md border p-2.5 ${disabled ? "opacity-60" : ""}`}>
       <span className="min-w-0">
         <SettingLabel label={label} description={description} />
       </span>
-      <Switch checked={checked} onCheckedChange={onChange} />
+      <Switch checked={checked} disabled={disabled} onCheckedChange={onChange} />
     </label>
   );
 }
