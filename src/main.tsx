@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { Archive, ArrowLeft, ArrowUpRight, Copy, Download, Edit3, FileUp, Ghost, HelpCircle, History, Layers, RotateCcw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
+import { Archive, ArrowLeft, ArrowUpRight, Copy, Download, Edit3, Eye, EyeOff, FileUp, Ghost, HelpCircle, History, Layers, RotateCcw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import "./styles.css";
 import { archiveGhosts, clearData, confirmArchivePreview, enhanceWithDeepSeek, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, testDeepSeek, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
@@ -163,6 +163,8 @@ const messages = {
     deepSeekEnabledDescription: "Allow Tab Graveyard to use DeepSeek for future AI-enhanced summaries and recall.",
     deepSeekApiKey: "API Key",
     deepSeekApiKeyDescription: "Stored in local browser storage. It is not uploaded anywhere except to your configured DeepSeek endpoint.",
+    showApiKey: "Show API key",
+    hideApiKey: "Hide API key",
     deepSeekModel: "Model",
     deepSeekModelDescription: "DeepSeek model name used for connection tests, memory enhancement, query expansion, and session naming.",
     deepSeekBaseUrl: "Base URL",
@@ -344,6 +346,8 @@ const messages = {
     deepSeekEnabledDescription: "允许 Tab Graveyard 后续用 DeepSeek 做 AI 摘要和增强找回。",
     deepSeekApiKey: "API Key",
     deepSeekApiKeyDescription: "保存在浏览器本地存储中。除你配置的 DeepSeek 接口外，不会上传到其他地方。",
+    showApiKey: "显示 API Key",
+    hideApiKey: "隐藏 API Key",
     deepSeekModel: "模型",
     deepSeekModelDescription: "用于连接测试、记忆增强、查询扩展和会话命名的 DeepSeek 模型名。",
     deepSeekBaseUrl: "Base URL",
@@ -1699,10 +1703,35 @@ function TextRow({
   type?: string;
   onChange: (value: string) => void;
 }) {
+  const { t } = useI18n();
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const isPassword = type === "password";
+  const inputType = isPassword && passwordVisible ? "text" : type;
   return (
     <label className="grid gap-1 text-sm">
       <SettingLabel label={label} description={description} />
-      <Input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
+      <span className="relative">
+        <Input
+          className={isPassword ? "pr-10" : undefined}
+          type={inputType}
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        {isPassword ? (
+          <button
+            type="button"
+            className="absolute right-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+            aria-label={passwordVisible ? t.hideApiKey : t.showApiKey}
+            onClick={(event) => {
+              event.preventDefault();
+              setPasswordVisible((visible) => !visible);
+            }}
+          >
+            {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        ) : null}
+      </span>
     </label>
   );
 }
