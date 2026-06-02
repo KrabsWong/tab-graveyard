@@ -185,10 +185,17 @@ const messages = {
     domainBlacklist: "Domain Blacklist",
     blacklistDescription: "One domain, keyword, or wildcard per line. Example: *.abc.com blocks abc.com and all subdomains.",
     saveBlacklist: "Save blacklist",
+    blacklistSaved: "Blacklist saved",
+    actionFailed: "Action failed",
+    dataExported: "Data exported",
+    historyImported: "History imported",
+    demoLoaded: "Demo workspace loaded",
+    dataCleared: "Local memory cleared",
     dataPortability: "Data Portability",
     dataDescription: "Export, import, seed demo data, or clear local memory.",
     exportJson: "Export JSON",
     importJson: "Import JSON",
+    dataImported: "Data imported",
     import30dHistory: "Import 30d history",
     demoWorkspace: "Demo workspace",
     clearAll: "Clear all",
@@ -368,10 +375,17 @@ const messages = {
     domainBlacklist: "域名黑名单",
     blacklistDescription: "每行一个域名、关键词或通配符。例如：*.abc.com 会屏蔽 abc.com 及所有子域名。",
     saveBlacklist: "保存黑名单",
+    blacklistSaved: "黑名单已保存",
+    actionFailed: "操作失败",
+    dataExported: "数据已导出",
+    historyImported: "历史记录已导入",
+    demoLoaded: "示例工作区已载入",
+    dataCleared: "本地记忆已清空",
     dataPortability: "数据迁移",
     dataDescription: "导出、导入、使用示例数据，或清空本地记忆。",
     exportJson: "导出 JSON",
     importJson: "导入 JSON",
+    dataImported: "数据已导入",
     import30dHistory: "导入 30 天历史",
     demoWorkspace: "示例工作区",
     clearAll: "清空全部",
@@ -1018,6 +1032,7 @@ function ResultGrid({ results, fallbackTabs, refresh }: { results: RecallResult[
 
 function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: () => Promise<void> }) {
   const { language, t } = useI18n();
+  const notify = useToast();
   const [blacklist, setBlacklist] = useState(snapshot.settings.blacklistDomains.join("\n"));
   const [deepSeekStatus, setDeepSeekStatus] = useState<string | null>(null);
   const [deepSeekTesting, setDeepSeekTesting] = useState(false);
@@ -1042,6 +1057,15 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
     link.download = "tab-graveyard-export.json";
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  const runWithToast = async (action: () => Promise<void>, successMessage: string) => {
+    try {
+      await action();
+      notify(successMessage);
+    } catch (error) {
+      notify(error instanceof Error ? error.message : t.actionFailed);
+    }
   };
 
   return (
@@ -1242,7 +1266,7 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             <CardDescription>{t.blacklistDescription}</CardDescription>
           </div>
           <textarea className="min-h-96 rounded-md border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={blacklist} onChange={(event) => setBlacklist(event.target.value)} />
-          <Button className="w-fit" onClick={() => update({ blacklistDomains: blacklist.split("\n").map((item) => item.trim()).filter(Boolean) })}>{t.saveBlacklist}</Button>
+          <Button className="w-fit" onClick={() => runWithToast(() => update({ blacklistDomains: blacklist.split("\n").map((item) => item.trim()).filter(Boolean) }), t.blacklistSaved)}>{t.saveBlacklist}</Button>
         </CardContent>
       </Card>
         </TabsContent>
@@ -1254,11 +1278,11 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             <CardDescription>{t.dataDescription}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={download}><Download className="h-4 w-4" /> {t.exportJson}</Button>
+            <Button variant="outline" onClick={() => runWithToast(download, t.dataExported)}><Download className="h-4 w-4" /> {t.exportJson}</Button>
             <ImportButton refresh={refresh} />
-            <Button variant="outline" onClick={async () => { await importHistory(); await refresh(); }}><History className="h-4 w-4" /> {t.import30dHistory}</Button>
-            <Button variant="outline" onClick={async () => { await seedDemo(); await refresh(); }}><Sparkles className="h-4 w-4" /> {t.demoWorkspace}</Button>
-            <Button variant="destructive" onClick={async () => { await clearData(); await refresh(); }}><Trash2 className="h-4 w-4" /> {t.clearAll}</Button>
+            <Button variant="outline" onClick={() => runWithToast(async () => { await importHistory(); await refresh(); }, t.historyImported)}><History className="h-4 w-4" /> {t.import30dHistory}</Button>
+            <Button variant="outline" onClick={() => runWithToast(async () => { await seedDemo(); await refresh(); }, t.demoLoaded)}><Sparkles className="h-4 w-4" /> {t.demoWorkspace}</Button>
+            <Button variant="destructive" onClick={() => runWithToast(async () => { await clearData(); await refresh(); }, t.dataCleared)}><Trash2 className="h-4 w-4" /> {t.clearAll}</Button>
           </div>
         </CardContent>
       </Card>
@@ -1777,6 +1801,7 @@ function SettingLabel({ label, description }: { label: string; description?: str
 
 function ImportButton({ refresh }: { refresh: () => Promise<void> }) {
   const { t } = useI18n();
+  const notify = useToast();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
   return (
@@ -1790,7 +1815,20 @@ function ImportButton({ refresh }: { refresh: () => Promise<void> }) {
           <DialogDescription>{t.importDescription}</DialogDescription>
         </DialogHeader>
         <textarea className="min-h-40 rounded-md border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={text} onChange={(event) => setText(event.target.value)} />
-        <Button onClick={async () => { await importData(JSON.parse(text)); setOpen(false); await refresh(); }}>{t.import}</Button>
+        <Button
+          onClick={async () => {
+            try {
+              await importData(JSON.parse(text));
+              setOpen(false);
+              await refresh();
+              notify(t.dataImported);
+            } catch (error) {
+              notify(error instanceof Error ? error.message : t.actionFailed);
+            }
+          }}
+        >
+          {t.import}
+        </Button>
       </DialogContent>
     </Dialog>
   );
