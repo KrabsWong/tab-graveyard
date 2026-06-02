@@ -183,7 +183,7 @@ const messages = {
     resurfaceFrequencyDescription: "Maximum number of archived-memory suggestions Tab Graveyard may show per day.",
     resurfaceFrequencyOption: "At most {count} resurfacing suggestions per day.",
     domainBlacklist: "Domain Blacklist",
-    blacklistDescription: "One domain or keyword per line. Matching pages are not recorded.",
+    blacklistDescription: "One domain, keyword, or wildcard per line. Example: *.abc.com blocks abc.com and all subdomains.",
     saveBlacklist: "Save blacklist",
     dataPortability: "Data Portability",
     dataDescription: "Export, import, seed demo data, or clear local memory.",
@@ -366,7 +366,7 @@ const messages = {
     resurfaceFrequencyDescription: "每天最多展示多少次归档记忆的主动唤醒提示。",
     resurfaceFrequencyOption: "每天最多展示 {count} 次主动唤醒提示。",
     domainBlacklist: "域名黑名单",
-    blacklistDescription: "每行一个域名或关键词。匹配页面不会被记录。",
+    blacklistDescription: "每行一个域名、关键词或通配符。例如：*.abc.com 会屏蔽 abc.com 及所有子域名。",
     saveBlacklist: "保存黑名单",
     dataPortability: "数据迁移",
     dataDescription: "导出、导入、使用示例数据，或清空本地记忆。",
@@ -1241,7 +1241,7 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             <CardTitle>{t.domainBlacklist}</CardTitle>
             <CardDescription>{t.blacklistDescription}</CardDescription>
           </div>
-          <textarea className="min-h-32 rounded-md border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={blacklist} onChange={(event) => setBlacklist(event.target.value)} />
+          <textarea className="min-h-96 rounded-md border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={blacklist} onChange={(event) => setBlacklist(event.target.value)} />
           <Button className="w-fit" onClick={() => update({ blacklistDomains: blacklist.split("\n").map((item) => item.trim()).filter(Boolean) })}>{t.saveBlacklist}</Button>
         </CardContent>
       </Card>

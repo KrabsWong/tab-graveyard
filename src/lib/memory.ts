@@ -365,8 +365,21 @@ export function isBlacklisted(domain: string, blacklist: string[]) {
   const normalized = domain.toLowerCase();
   return blacklist.some((item) => {
     const needle = item.toLowerCase().trim();
-    return needle && normalized.includes(needle);
+    if (!needle) return false;
+    if (needle.startsWith("*.")) {
+      const root = needle.slice(2);
+      return normalized === root || normalized.endsWith(`.${root}`);
+    }
+    if (needle.includes("*")) {
+      return wildcardToRegExp(needle).test(normalized);
+    }
+    return normalized === needle || normalized.endsWith(`.${needle}`) || normalized.includes(needle);
   });
+}
+
+function wildcardToRegExp(pattern: string) {
+  const escaped = pattern.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+  return new RegExp(`^${escaped}$`);
 }
 
 export function formatTime(timestamp: number, now = Date.now(), language: "en" | "zh" = "en") {
