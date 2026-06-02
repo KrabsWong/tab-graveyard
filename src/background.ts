@@ -658,14 +658,33 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
     .map(({ item }) => item);
   if (!related.length) return;
   try {
-    await chrome.tabs.sendMessage(tab.id, {
-      type: "TAB_GRAVEYARD_RESURFACE",
-      tabs: related.map((item) => ({ id: item.id, title: item.title, domain: item.domain }))
-    });
+    await sendResurfaceMessage(tab.id, related);
     await recordResurfaceAction(related.map((item) => item.id), "shown");
   } catch {
     // Some pages cannot receive content-script messages.
   }
+}
+
+async function sendResurfaceMessage(tabId: number, tabs: TabMemory[]) {
+  const message = {
+    type: "TAB_GRAVEYARD_RESURFACE",
+    tabs: tabs.map((item) => ({ id: item.id, title: item.title, domain: item.domain }))
+  };
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      await chrome.tabs.sendMessage(tabId, message);
+      return;
+    } catch (error) {
+      lastError = error;
+      await delay(350);
+    }
+  }
+  throw lastError;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, ms));
 }
 
 async function openDashboard() {
