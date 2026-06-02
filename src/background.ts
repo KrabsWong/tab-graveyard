@@ -23,6 +23,10 @@ import type { ContentType, ExtensionRequest, ExtensionResponse, GraveyardState, 
 const UNDO_MS = 5_000;
 const activeStartedByTabId = new Map<number, number>();
 
+function logResurface(stage: string, details?: Record<string, unknown>) {
+  console.info("[Tab Graveyard][resurface]", stage, details ?? {});
+}
+
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   const state = await getState();
   if (reason === "install" && state.tabs.length === 0) {
@@ -635,33 +639,75 @@ async function importHistory() {
 }
 
 async function maybeResurface(tab: chrome.tabs.Tab) {
-  if (!tab.id || !tab.url) return;
+  if (!tab.id || !tab.url) {
+    logResurface("skip:no-tab-url", { tabId: tab.id, url: tab.url });
+    return;
+  }
   const url = tab.url;
   const state = await getState();
-  if (!state.settings.resurfaceEnabled || state.settings.recordingPaused) return;
+  logResurface("evaluate", {
+    tabId: tab.id,
+    url,
+    title: tab.title,
+    enabled: state.settings.resurfaceEnabled,
+    recordingPaused: state.settings.recordingPaused,
+    archivedCount: state.tabs.filter((item) => item.archived).length
+  });
+  if (!state.settings.resurfaceEnabled) {
+    logResurface("skip:disabled", { tabId: tab.id, url });
+    return;
+  }
+  if (state.settings.recordingPaused) {
+    logResurface("skip:recording-paused", { tabId: tab.id, url });
+    return;
+  }
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const shownToday = state.events.filter((event) => event.type === "resurface_shown" && event.createdAt >= today.getTime()).length;
   const lastShown = [...state.events].reverse().find((event) => event.type === "resurface_shown");
-  if (shownToday >= state.settings.resurfaceRule.maxPerDay) return;
-  if (lastShown && Date.now() - lastShown.createdAt < state.settings.resurfaceRule.cooldownHours * 60 * 60 * 1000) return;
+  if (shownToday >= state.settings.resurfaceRule.maxPerDay) {
+    logResurface("skip:max-per-day", { shownToday, maxPerDay: state.settings.resurfaceRule.maxPerDay });
+    return;
+  }
+  if (lastShown && Date.now() - lastShown.createdAt < state.settings.resurfaceRule.cooldownHours * 60 * 60 * 1000) {
+    logResurface("skip:cooldown", {
+      lastShownAt: new Date(lastShown.createdAt).toISOString(),
+      cooldownHours: state.settings.resurfaceRule.cooldownHours
+    });
+    return;
+  }
   const current = createInfoCard(tab.title || getDomain(url), url);
-  const related = state.tabs
+  const scored = state.tabs
     .filter((item) => item.archived && item.url !== url)
     .map((item) => ({
       item,
       overlap: item.card.topics.filter((topic) => current.topics.includes(topic)).length + (item.domain === getDomain(url) ? 2 : 0)
-    }))
+    }));
+  logResurface("matched-candidates", {
+    currentDomain: getDomain(url),
+    currentTopics: current.topics,
+    candidates: scored
+      .filter(({ overlap }) => overlap > 0)
+      .sort((a, b) => b.overlap - a.overlap)
+      .slice(0, 8)
+      .map(({ item, overlap }) => ({ title: item.title, url: item.url, domain: item.domain, topics: item.card.topics, overlap }))
+  });
+  const related = scored
     .filter(({ overlap }) => overlap >= 2)
     .sort((a, b) => b.overlap - a.overlap)
     .slice(0, 4)
     .map(({ item }) => item);
-  if (!related.length) return;
+  if (!related.length) {
+    logResurface("skip:no-related", { minOverlap: 2 });
+    return;
+  }
   try {
+    logResurface("send:start", { tabId: tab.id, related: related.map((item) => ({ title: item.title, url: item.url })) });
     await sendResurfaceMessage(tab.id, related);
+    logResurface("send:success", { tabId: tab.id, relatedCount: related.length });
     await recordResurfaceAction(related.map((item) => item.id), "shown");
-  } catch {
-    // Some pages cannot receive content-script messages.
+  } catch (error) {
+    logResurface("send:failed", { tabId: tab.id, error: String(error) });
   }
 }
 
@@ -674,9 +720,11 @@ async function sendResurfaceMessage(tabId: number, tabs: TabMemory[]) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     try {
       await chrome.tabs.sendMessage(tabId, message);
+      logResurface("message:delivered", { tabId, attempt });
       return;
     } catch (error) {
       lastError = error;
+      logResurface("message:failed", { tabId, attempt, error: String(error) });
       if (attempt === 0) await injectContentScript(tabId);
       await delay(350);
     }
@@ -690,7 +738,9 @@ async function injectContentScript(tabId: number) {
       target: { tabId },
       files: ["assets/content.js"]
     });
+    logResurface("content-script:injected", { tabId });
   } catch {
+    logResurface("content-script:inject-failed", { tabId });
     // Browser pages and restricted URLs may reject extension script injection.
   }
 }

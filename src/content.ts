@@ -7,8 +7,10 @@ const tabGraveyardWindow = window as Window & { __tabGraveyardContentLoaded?: bo
 
 if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
   tabGraveyardWindow.__tabGraveyardContentLoaded = true;
+  console.info("[Tab Graveyard][content]", "loaded", { url: location.href });
 
   chrome.runtime.onMessage.addListener((message: ResurfaceMessage) => {
+    console.info("[Tab Graveyard][content]", "message", { type: message.type, count: message.tabs?.length ?? 0, url: location.href });
     if (message.type !== "TAB_GRAVEYARD_RESURFACE" || !message.tabs.length) return;
     showResurface(message.tabs);
   });
@@ -45,6 +47,7 @@ if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
 
 function showResurface(tabs: ResurfaceMessage["tabs"]) {
   document.getElementById("tab-graveyard-resurface")?.remove();
+  console.info("[Tab Graveyard][content]", "show-resurface", { count: tabs.length, url: location.href });
 
   const root = document.createElement("div");
   root.id = "tab-graveyard-resurface";
