@@ -213,6 +213,7 @@ export type ExtensionRequest =
   | { type: "importHistory" }
   | { type: "testDeepSeek" }
   | { type: "enhanceWithDeepSeek" }
+  | { type: "openUrl"; url: string }
   | { type: "openDashboard" };
 
 export type DeepSeekEnhanceResult = {

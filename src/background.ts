@@ -172,6 +172,9 @@ async function handleMessage(request: ExtensionRequest) {
       return testDeepSeek();
     case "enhanceWithDeepSeek":
       return enhanceWithDeepSeek();
+    case "openUrl":
+      await chrome.tabs.create({ url: request.url, active: true });
+      return undefined;
     case "openDashboard":
       await openDashboard();
       return undefined;
@@ -714,7 +717,7 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
 async function sendResurfaceMessage(tabId: number, tabs: TabMemory[]) {
   const message = {
     type: "TAB_GRAVEYARD_RESURFACE",
-    tabs: tabs.map((item) => ({ id: item.id, title: item.title, domain: item.domain }))
+    tabs: tabs.map((item) => ({ id: item.id, title: item.title, domain: item.domain, url: item.url }))
   };
   let lastError: unknown;
   for (let attempt = 0; attempt < 4; attempt += 1) {

@@ -1,6 +1,6 @@
 type ResurfaceMessage = {
   type: "TAB_GRAVEYARD_RESURFACE";
-  tabs: Array<{ id: string; title: string; domain: string }>;
+  tabs: Array<{ id: string; title: string; domain: string; url: string }>;
 };
 
 const tabGraveyardWindow = window as Window & { __tabGraveyardContentLoaded?: boolean };
@@ -76,11 +76,11 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
       ${tabs
         .slice(0, 3)
         .map(
-          (tab) => `
-          <div style="min-width:0;">
+          (tab, index) => `
+          <button data-url-index="${index}" style="min-width:0;text-align:left;border:0;background:transparent;padding:0;cursor:pointer;color:inherit;">
             <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(tab.title)}</div>
             <div style="font-size:11px;color:#60706d;">${escapeHtml(tab.domain)}</div>
-          </div>`
+          </button>`
         )
         .join("")}
     </div>
@@ -91,14 +91,23 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
   `;
 
   const ids = tabs.map((tab) => tab.id);
+  const openTab = (tab: ResurfaceMessage["tabs"][number]) => {
+    chrome.runtime.sendMessage({ type: "resurfaceAction", tabIds: [tab.id], action: "opened" });
+    chrome.runtime.sendMessage({ type: "openUrl", url: tab.url });
+    root.remove();
+  };
+  root.querySelectorAll<HTMLButtonElement>("[data-url-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const tab = tabs[Number(button.dataset.urlIndex)];
+      if (tab) openTab(tab);
+    });
+  });
   root.querySelector<HTMLButtonElement>('[data-action="dismiss"]')?.addEventListener("click", () => {
     chrome.runtime.sendMessage({ type: "resurfaceAction", tabIds: ids, action: "dismissed" });
     root.remove();
   });
   root.querySelector<HTMLButtonElement>('[data-action="open"]')?.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ type: "resurfaceAction", tabIds: ids, action: "opened" });
-    chrome.runtime.sendMessage({ type: "openDashboard" });
-    root.remove();
+    openTab(tabs[0]);
   });
 
   document.documentElement.append(root);
