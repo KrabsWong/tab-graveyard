@@ -1077,7 +1077,7 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
         </TabsList>
         <TabsContent value="general" className="mt-4 grid items-start gap-5">
       <Card>
-        <CardContent className="grid gap-4 p-5">
+        <CardContent className="grid gap-6 p-5">
           <SelectRow
             label={t.language}
             value={snapshot.settings.language}
@@ -1123,11 +1123,7 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
 
         <TabsContent value="privacy" className="mt-4 grid items-start gap-5">
       <Card>
-        <CardHeader>
-          <CardTitle>{t.privacyRecording}</CardTitle>
-          <CardDescription>{t.privacyDescription}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
+        <CardContent className="grid gap-6 p-5">
           <ToggleRow label={t.pauseRecording} description={t.pauseRecordingDescription} checked={snapshot.settings.recordingPaused} onChange={(recordingPaused) => update({ recordingPaused })} />
           <ToggleRow label={t.strictPrivacy} description={t.strictPrivacyDescription} checked={snapshot.settings.strictPrivacy} onChange={(strictPrivacy) => update({ strictPrivacy, aiMode: strictPrivacy ? "local-only" : snapshot.settings.aiMode })} />
         </CardContent>
@@ -1148,11 +1144,11 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
         </TabsContent>
         <TabsContent value="ai" className="mt-4 grid items-start gap-5">
       <Card>
-        <CardHeader>
-          <CardTitle>{t.deepSeekProvider}</CardTitle>
-          <CardDescription>{t.deepSeekDescription}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
+        <CardContent className="grid gap-6 p-5">
+          <div>
+            <CardTitle>{t.deepSeekProvider}</CardTitle>
+            <CardDescription>{t.deepSeekDescription}</CardDescription>
+          </div>
           <SelectRow
             label={t.aiMode}
             value={snapshot.settings.aiMode}
@@ -1236,11 +1232,11 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
         </TabsContent>
         <TabsContent value="rules" className="mt-4 grid items-start gap-5">
       <Card>
-        <CardHeader>
-          <CardTitle>{t.domainBlacklist}</CardTitle>
-          <CardDescription>{t.blacklistDescription}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3">
+        <CardContent className="grid gap-5 p-5">
+          <div>
+            <CardTitle>{t.domainBlacklist}</CardTitle>
+            <CardDescription>{t.blacklistDescription}</CardDescription>
+          </div>
           <textarea className="min-h-32 rounded-md border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={blacklist} onChange={(event) => setBlacklist(event.target.value)} />
           <Button className="w-fit" onClick={() => update({ blacklistDomains: blacklist.split("\n").map((item) => item.trim()).filter(Boolean) })}>{t.saveBlacklist}</Button>
         </CardContent>
@@ -1248,16 +1244,18 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
         </TabsContent>
         <TabsContent value="data" className="mt-4 grid items-start gap-5">
       <Card>
-        <CardHeader>
-          <CardTitle>{t.dataPortability}</CardTitle>
-          <CardDescription>{t.dataDescription}</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={download}><Download className="h-4 w-4" /> {t.exportJson}</Button>
-          <ImportButton refresh={refresh} />
-          <Button variant="outline" onClick={async () => { await importHistory(); await refresh(); }}><History className="h-4 w-4" /> {t.import30dHistory}</Button>
-          <Button variant="outline" onClick={async () => { await seedDemo(); await refresh(); }}><Sparkles className="h-4 w-4" /> {t.demoWorkspace}</Button>
-          <Button variant="destructive" onClick={async () => { await clearData(); await refresh(); }}><Trash2 className="h-4 w-4" /> {t.clearAll}</Button>
+        <CardContent className="grid gap-5 p-5">
+          <div>
+            <CardTitle>{t.dataPortability}</CardTitle>
+            <CardDescription>{t.dataDescription}</CardDescription>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={download}><Download className="h-4 w-4" /> {t.exportJson}</Button>
+            <ImportButton refresh={refresh} />
+            <Button variant="outline" onClick={async () => { await importHistory(); await refresh(); }}><History className="h-4 w-4" /> {t.import30dHistory}</Button>
+            <Button variant="outline" onClick={async () => { await seedDemo(); await refresh(); }}><Sparkles className="h-4 w-4" /> {t.demoWorkspace}</Button>
+            <Button variant="destructive" onClick={async () => { await clearData(); await refresh(); }}><Trash2 className="h-4 w-4" /> {t.clearAll}</Button>
+          </div>
         </CardContent>
       </Card>
 
