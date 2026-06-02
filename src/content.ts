@@ -67,14 +67,14 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
   ].join(";");
 
   const relatedText = tabs.length === 1 ? "1 related page" : `${tabs.length} related pages`;
+  const primaryActionText = tabs.length === 1 ? "Open" : `Open all ${tabs.length}`;
   root.innerHTML = `
     <div style="padding:14px 14px 10px;border-bottom:1px solid #edf1f0;">
       <div style="font-size:13px;font-weight:700;">Tab Graveyard</div>
-      <div style="font-size:12px;line-height:1.45;color:#60706d;margin-top:3px;">You looked at ${relatedText} before. Open Graveyard to recall them?</div>
+      <div style="font-size:12px;line-height:1.45;color:#60706d;margin-top:3px;">You looked at ${relatedText} before.</div>
     </div>
-    <div style="padding:10px 14px;display:grid;gap:7px;">
+    <div style="padding:10px 14px;display:grid;gap:8px;max-height:126px;overflow-y:${tabs.length > 3 ? "auto" : "visible"};">
       ${tabs
-        .slice(0, 3)
         .map(
           (tab, index) => `
           <button data-url-index="${index}" style="min-width:0;text-align:left;border:0;background:transparent;padding:0;cursor:pointer;color:inherit;">
@@ -85,21 +85,21 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
         .join("")}
     </div>
     <div style="display:flex;gap:8px;padding:0 14px 14px;">
-      <button data-action="open" style="height:32px;padding:0 12px;border-radius:6px;border:0;background:#1a6660;color:white;font-size:12px;font-weight:700;cursor:pointer;">Open</button>
+      <button data-action="open" style="height:32px;padding:0 12px;border-radius:6px;border:0;background:#1a6660;color:white;font-size:12px;font-weight:700;cursor:pointer;">${primaryActionText}</button>
       <button data-action="dismiss" style="height:32px;padding:0 12px;border-radius:6px;border:1px solid #d5dedc;background:white;color:#12201f;font-size:12px;font-weight:700;cursor:pointer;">Dismiss</button>
     </div>
   `;
 
   const ids = tabs.map((tab) => tab.id);
-  const openTab = (tab: ResurfaceMessage["tabs"][number]) => {
-    chrome.runtime.sendMessage({ type: "resurfaceAction", tabIds: [tab.id], action: "opened" });
-    chrome.runtime.sendMessage({ type: "openUrl", url: tab.url });
+  const openTabs = (selectedTabs: ResurfaceMessage["tabs"]) => {
+    chrome.runtime.sendMessage({ type: "resurfaceAction", tabIds: selectedTabs.map((tab) => tab.id), action: "opened" });
+    selectedTabs.forEach((tab) => chrome.runtime.sendMessage({ type: "openUrl", url: tab.url }));
     root.remove();
   };
   root.querySelectorAll<HTMLButtonElement>("[data-url-index]").forEach((button) => {
     button.addEventListener("click", () => {
       const tab = tabs[Number(button.dataset.urlIndex)];
-      if (tab) openTab(tab);
+      if (tab) openTabs([tab]);
     });
   });
   root.querySelector<HTMLButtonElement>('[data-action="dismiss"]')?.addEventListener("click", () => {
@@ -107,7 +107,7 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
     root.remove();
   });
   root.querySelector<HTMLButtonElement>('[data-action="open"]')?.addEventListener("click", () => {
-    openTab(tabs[0]);
+    openTabs(tabs);
   });
 
   document.documentElement.append(root);
