@@ -1077,11 +1077,7 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
         </TabsList>
         <TabsContent value="general" className="mt-4 grid items-start gap-5">
       <Card>
-        <CardHeader>
-          <CardTitle>{t.generalSettings}</CardTitle>
-          <CardDescription>{t.generalSettingsDescription}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
+        <CardContent className="grid gap-4 p-5">
           <SelectRow
             label={t.language}
             value={snapshot.settings.language}
@@ -1681,10 +1677,9 @@ function SectionHeader({ title, description }: { title: string; description: str
 
 function ToggleRow({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
-    <label className="flex items-center justify-between gap-4 rounded-md border p-3">
-      <span>
-        <span className="block text-sm font-medium">{label}</span>
-        <span className="block text-xs text-muted-foreground">{description}</span>
+    <label className="flex items-center justify-between gap-4 rounded-md border p-2.5">
+      <span className="min-w-0">
+        <SettingLabel label={label} description={description} />
       </span>
       <Switch checked={checked} onCheckedChange={onChange} />
     </label>
@@ -1708,8 +1703,7 @@ function TextRow({
 }) {
   return (
     <label className="grid gap-1 text-sm">
-      <span className="font-medium">{label}</span>
-      {description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
+      <SettingLabel label={label} description={description} />
       <Input type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
@@ -1734,8 +1728,7 @@ function SelectRow({
   const selectedOption = normalizedOptions.find((option) => option.value === value);
   return (
     <label className="grid gap-1 text-sm">
-      <span className="font-medium">{label}</span>
-      {description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
+      <SettingLabel label={label} description={description} />
       <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={value} onChange={(event) => onChange(event.target.value)}>
         {normalizedOptions.map((item) => {
           return <option key={item.value} value={item.value}>{item.label}</option>;
@@ -1743,6 +1736,15 @@ function SelectRow({
       </select>
       {showOptionDescription && selectedOption?.description ? <span className="text-xs text-muted-foreground">{selectedOption.description}</span> : null}
     </label>
+  );
+}
+
+function SettingLabel({ label, description }: { label: string; description?: string }) {
+  return (
+    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+      <span className="text-sm font-medium">{label}</span>
+      {description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
+    </span>
   );
 }
 
