@@ -58,20 +58,20 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
     "z-index:2147483647",
     "width:340px",
     "font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-    "color:#12201f",
+    "color:#09090b",
     "background:#ffffff",
-    "border:1px solid #d5dedc",
+    "border:1px solid #e4e4e7",
     "border-radius:8px",
-    "box-shadow:0 18px 45px rgba(15,23,42,.18)",
+    "box-shadow:0 10px 30px rgba(0,0,0,.12)",
     "overflow:hidden"
   ].join(";");
 
   const relatedText = tabs.length === 1 ? "1 related page" : `${tabs.length} related pages`;
   const primaryActionText = tabs.length === 1 ? "Open" : `Open all ${tabs.length}`;
   root.innerHTML = `
-    <div style="padding:14px 14px 10px;border-bottom:1px solid #edf1f0;">
+    <div style="padding:14px 14px 10px;border-bottom:1px solid #e4e4e7;">
       <div style="font-size:13px;font-weight:700;">Tab Graveyard</div>
-      <div style="font-size:12px;line-height:1.45;color:#60706d;margin-top:3px;">You looked at ${relatedText} before.</div>
+      <div style="font-size:12px;line-height:1.45;color:#71717a;margin-top:3px;">You looked at ${relatedText} before.</div>
     </div>
     <div style="padding:10px 14px;display:grid;gap:8px;max-height:126px;overflow-y:${tabs.length > 3 ? "auto" : "visible"};">
       ${tabs
@@ -79,14 +79,14 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
           (tab, index) => `
           <button data-url-index="${index}" style="min-width:0;text-align:left;border:0;background:transparent;padding:0;cursor:pointer;color:inherit;">
             <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(tab.title)}</div>
-            <div style="font-size:11px;color:#60706d;">${escapeHtml(tab.domain)}</div>
+            <div style="font-size:11px;color:#71717a;">${escapeHtml(tab.domain)}</div>
           </button>`
         )
         .join("")}
     </div>
     <div style="display:flex;gap:8px;padding:0 14px 14px;">
-      <button data-action="open" style="height:32px;padding:0 12px;border-radius:6px;border:0;background:#1a6660;color:white;font-size:12px;font-weight:700;cursor:pointer;">${primaryActionText}</button>
-      <button data-action="dismiss" style="height:32px;padding:0 12px;border-radius:6px;border:1px solid #d5dedc;background:white;color:#12201f;font-size:12px;font-weight:700;cursor:pointer;">Dismiss</button>
+      <button data-action="open" style="height:32px;padding:0 12px;border-radius:6px;border:0;background:#18181b;color:#fafafa;font-size:12px;font-weight:700;cursor:pointer;">${primaryActionText}</button>
+      <button data-action="dismiss" style="height:32px;padding:0 12px;border-radius:6px;border:1px solid #e4e4e7;background:#ffffff;color:#09090b;font-size:12px;font-weight:700;cursor:pointer;">Dismiss</button>
     </div>
   `;
 
