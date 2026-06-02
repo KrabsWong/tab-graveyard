@@ -1,35 +1,92 @@
 # Tab Graveyard
 
-Chrome MV3 extension prototype for the PRD in `docs/Tab-Graveyard-PRD-Final.md`.
+Tab Graveyard is a Chrome extension for people who keep too many tabs open because closing them feels like losing context. It turns browser tabs into local, searchable memory so users can close tabs with less risk and return to the right page later.
 
-## Run
+The product vision is simple: closing a tab should be a reversible act. Tab Graveyard records lightweight page metadata, helps distinguish useful memories from forgotten noise, and gives users a practical way to recover, review, archive, and resurface browser context.
+
+## Core Features
+
+- Recall recently useful pages from a dedicated dashboard.
+- Detect Ghost Tabs: inactive tabs that look safe to archive.
+- Browse archived memory by timeline, source, entity, and session.
+- Restore individual tabs or grouped browsing sessions.
+- Search by title, URL, domain, topic, source, type, entity, reading status, and importance.
+- Use bilingual Chinese and English interface text, with system-language detection.
+- Switch between light, dark, and system theme modes.
+- Edit memory cards and save domain-level correction rules.
+- Show favicon, page summary, source, content type, reading status, importance, activity time, and archive status.
+- Track local behavior signals such as activation, active time, scroll depth, copied URL, restore, and resurface feedback.
+- Configure DeepSeek API access for AI-enhanced summaries, topics, entities, importance, possible search terms, and session names.
+- Keep privacy controls explicit with strict local-only mode, blacklist rules, data export/import, and a data log.
+
+## Privacy Model
+
+Tab Graveyard is local-first. Browser memory is stored in `chrome.storage.local`.
+
+Stored locally:
+
+- URL
+- title
+- domain
+- timestamps
+- inferred source/type/topic/entity metadata
+- lightweight behavior signals
+- edited card fields and local correction rules
+
+Never captured:
+
+- passwords
+- private form values
+- full page archives
+- page body text by default
+
+When DeepSeek enhancement is enabled and strict privacy mode is off, the extension sends only local metadata such as title, URL, domain, and existing memory-card fields to the configured DeepSeek-compatible endpoint.
+
+## Install In Chrome
+
+Build the extension first:
 
 ```bash
 npm install
 npm run build
 ```
 
-Then open Chrome:
+Then load it in Chrome:
 
-1. Go to `chrome://extensions`.
-2. Enable Developer mode.
-3. Click Load unpacked.
-4. Select this project's `dist` folder.
+1. Open `chrome://extensions`.
+2. Enable `Developer mode`.
+3. Click `Load unpacked`.
+4. Select the generated `dist` folder in this project.
+5. Open a new tab or click the extension popup to start using Tab Graveyard.
 
-## Implemented
+After loading the extension, Chrome will use the files from `dist`. If you make code changes, run `npm run build` again and click the reload button for the extension in `chrome://extensions`.
 
-- Popup, New Tab, Dashboard, and Options pages.
-- Local Tab Memory in `chrome.storage.local`.
-- Editable info cards, source/type/topic/entity inference, custom tags, bilingual cue matching, and domain-level correction rules.
-- Ghost Tab detection, archive preview/trust stages, 5-second undo, single tab and session restore.
-- Recall input, local synthesis/clarification, time/source/type/importance/reading/color/topic/entity facets, Why-Tips, result cards, sessions browsing.
-- Graveyard browsing by timeline, source, entity, and session, with fingerprint dedupe.
-- Session rename, merge, split, and restore controls.
-- Onboarding choices: import 30-day history, demo workspace, or start empty.
-- Strict privacy mode, pause recording, blacklist, privacy map, data log, export/import JSON.
-- Omnibox keyword `tg`, `Cmd/Ctrl+Shift+F` dashboard command, and Resurface content toast with frequency, cooldown, dismissal, and click tracking.
-- Local behavior signals: activation count, active time, max scroll depth, copy events, referrer-like signal, restore/resurface feedback.
-- DeepSeek API configuration with local API key storage, configurable model/base URL, connection test, AI-enhanced info cards, session naming, and guarded AI recall expansion.
-- Local leaderboard/premium/cloud-sync placeholder panels for product surface validation.
+## Development
 
-Cloud sync, billing, and public leaderboard backends are intentionally not faked in this prototype; their UI surfaces are local-only placeholders.
+Run a local development server:
+
+```bash
+npm run dev
+```
+
+Build for production:
+
+```bash
+npm run build
+```
+
+The main extension surfaces are:
+
+- `popup.html`: browser action popup
+- `dashboard.html`: main Tab Graveyard workspace
+- `newtab.html`: new tab experience
+- `options.html`: settings page
+- `src/background.ts`: Chrome extension background logic
+- `src/content.ts`: resurface content script
+- `src/main.tsx`: React UI
+
+## Current Scope
+
+This repository implements the local Chrome extension prototype described in `docs/Tab-Graveyard-PRD-Final.md`.
+
+Cloud sync, billing, and public leaderboard backends are not implemented. Related UI surfaces are local-only placeholders for product validation.
