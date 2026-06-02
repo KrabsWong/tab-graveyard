@@ -15,7 +15,7 @@
     "newtab": "newtab.html"
   },
   "options_page": "options.html",
-  "permissions": ["tabs", "storage", "history", "alarms"],
+  "permissions": ["tabs", "storage", "history", "alarms", "scripting"],
   "host_permissions": ["<all_urls>"],
   "content_scripts": [
     {

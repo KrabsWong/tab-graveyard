@@ -3,39 +3,45 @@ type ResurfaceMessage = {
   tabs: Array<{ id: string; title: string; domain: string }>;
 };
 
-chrome.runtime.onMessage.addListener((message: ResurfaceMessage) => {
-  if (message.type !== "TAB_GRAVEYARD_RESURFACE" || !message.tabs.length) return;
-  showResurface(message.tabs);
-});
+const tabGraveyardWindow = window as Window & { __tabGraveyardContentLoaded?: boolean };
 
-let lastTick = Date.now();
-let lastScrollSignal = 0;
+if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
+  tabGraveyardWindow.__tabGraveyardContentLoaded = true;
 
-window.setInterval(() => {
-  if (document.visibilityState !== "visible") {
-    lastTick = Date.now();
-    return;
-  }
-  const now = Date.now();
-  const activeMs = Math.min(now - lastTick, 20_000);
-  lastTick = now;
-  sendContentSignal({ activeMs, maxScrollPercent: getScrollPercent(), referrerUrl: document.referrer || undefined });
-}, 15_000);
+  chrome.runtime.onMessage.addListener((message: ResurfaceMessage) => {
+    if (message.type !== "TAB_GRAVEYARD_RESURFACE" || !message.tabs.length) return;
+    showResurface(message.tabs);
+  });
 
-window.addEventListener("scroll", () => {
-  const percent = getScrollPercent();
-  if (percent - lastScrollSignal < 10) return;
-  lastScrollSignal = percent;
-  sendContentSignal({ maxScrollPercent: percent, referrerUrl: document.referrer || undefined });
-}, { passive: true });
+  let lastTick = Date.now();
+  let lastScrollSignal = 0;
 
-document.addEventListener("copy", () => {
-  sendContentSignal({ copiedTextCount: 1, maxScrollPercent: getScrollPercent(), referrerUrl: document.referrer || undefined });
-  const text = window.getSelection()?.toString().trim();
-  if (text && /^https?:\/\//i.test(text)) {
-    chrome.runtime.sendMessage({ type: "copyUrlTrigger", url: text });
-  }
-});
+  window.setInterval(() => {
+    if (document.visibilityState !== "visible") {
+      lastTick = Date.now();
+      return;
+    }
+    const now = Date.now();
+    const activeMs = Math.min(now - lastTick, 20_000);
+    lastTick = now;
+    sendContentSignal({ activeMs, maxScrollPercent: getScrollPercent(), referrerUrl: document.referrer || undefined });
+  }, 15_000);
+
+  window.addEventListener("scroll", () => {
+    const percent = getScrollPercent();
+    if (percent - lastScrollSignal < 10) return;
+    lastScrollSignal = percent;
+    sendContentSignal({ maxScrollPercent: percent, referrerUrl: document.referrer || undefined });
+  }, { passive: true });
+
+  document.addEventListener("copy", () => {
+    sendContentSignal({ copiedTextCount: 1, maxScrollPercent: getScrollPercent(), referrerUrl: document.referrer || undefined });
+    const text = window.getSelection()?.toString().trim();
+    if (text && /^https?:\/\//i.test(text)) {
+      chrome.runtime.sendMessage({ type: "copyUrlTrigger", url: text });
+    }
+  });
+}
 
 function showResurface(tabs: ResurfaceMessage["tabs"]) {
   document.getElementById("tab-graveyard-resurface")?.remove();

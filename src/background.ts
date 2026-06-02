@@ -677,10 +677,22 @@ async function sendResurfaceMessage(tabId: number, tabs: TabMemory[]) {
       return;
     } catch (error) {
       lastError = error;
+      if (attempt === 0) await injectContentScript(tabId);
       await delay(350);
     }
   }
   throw lastError;
+}
+
+async function injectContentScript(tabId: number) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["assets/content.js"]
+    });
+  } catch {
+    // Browser pages and restricted URLs may reject extension script injection.
+  }
 }
 
 function delay(ms: number) {
