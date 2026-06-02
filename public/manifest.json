@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Graveyard",
+  "description": "Close tabs with confidence. Recall them the way you remember them.",
+  "version": "0.1.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Tab Graveyard"
+  },
+  "background": {
+    "service_worker": "assets/background.js",
+    "type": "module"
+  },
+  "chrome_url_overrides": {
+    "newtab": "newtab.html"
+  },
+  "options_page": "options.html",
+  "permissions": ["tabs", "storage", "history", "alarms"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["assets/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "omnibox": {
+    "keyword": "tg"
+  },
+  "commands": {
+    "open-graveyard": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+F",
+        "mac": "Command+Shift+F"
+      },
+      "description": "Open Tab Graveyard recall"
+    }
+  }
+}
