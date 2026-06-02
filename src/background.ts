@@ -715,8 +715,12 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
 }
 
 async function sendResurfaceMessage(tabId: number, tabs: TabMemory[]) {
+  const state = await getState();
+  const language = resolveUiLanguage(state.settings.language);
   const message = {
     type: "TAB_GRAVEYARD_RESURFACE",
+    language,
+    theme: state.settings.theme,
     tabs: tabs.map((item) => ({ id: item.id, title: item.title, domain: item.domain, url: item.url }))
   };
   let lastError: unknown;
@@ -733,6 +737,11 @@ async function sendResurfaceMessage(tabId: number, tabs: TabMemory[]) {
     }
   }
   throw lastError;
+}
+
+function resolveUiLanguage(mode: string) {
+  if (mode === "zh" || mode === "en") return mode;
+  return chrome.i18n.getUILanguage().toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
 async function injectContentScript(tabId: number) {
