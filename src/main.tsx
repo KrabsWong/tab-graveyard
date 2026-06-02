@@ -5,6 +5,7 @@ import "./styles.css";
 import { archiveGhosts, clearData, confirmArchivePreview, enhanceWithDeepSeek, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, testDeepSeek, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
 import type { AppSnapshot, BrowseGroupMode, LanguageMode, RecallFilters, RecallResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -436,6 +437,72 @@ function useToast() {
   return React.useContext(ToastContext) ?? (() => undefined);
 }
 
+function AppLogo({ size = "md", onClick }: { size?: "sm" | "md" | "lg"; onClick?: () => void }) {
+  const className = size === "lg" ? "h-12 w-12" : size === "sm" ? "h-9 w-9" : "h-10 w-10";
+  const image = (
+    <img
+      src="icons/icon-128.png"
+      alt=""
+      aria-hidden="true"
+      className={`${className} shrink-0 rounded-xl border bg-background object-cover shadow-sm`}
+    />
+  );
+  if (!onClick) return image;
+  return (
+    <button
+      type="button"
+      className="shrink-0 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      onClick={onClick}
+      title="View logo"
+    >
+      {image}
+    </button>
+  );
+}
+
+function LogoShowcase({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const { t } = useI18n();
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-6 backdrop-blur-sm" onClick={() => onOpenChange(false)}>
+      <button
+        type="button"
+        className="logo-showcase grid place-items-center rounded-xl border bg-card p-8 shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={(event) => event.stopPropagation()}
+        onDoubleClick={() => onOpenChange(false)}
+        aria-label={t.appName}
+      >
+        <div className="graveyard-dance-scene">
+          <div className="graveyard-animation-layer" aria-hidden="true">
+            <div className="graveyard-sparkle graveyard-sparkle-one" />
+            <div className="graveyard-sparkle graveyard-sparkle-two" />
+            <div className="graveyard-sparkle graveyard-sparkle-three" />
+            <div className="graveyard-folder-dancer">
+              <div className="graveyard-folder-face">
+                <span />
+                <span />
+              </div>
+            </div>
+            <div className="graveyard-stone">
+              <div className="graveyard-tab-mark">
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
+            <div className="graveyard-base">
+              <span />
+              <span />
+              <span />
+            </div>
+          </div>
+          <img src="icons/icon-1024.png" alt={t.appName} className="graveyard-final-logo" />
+        </div>
+      </button>
+    </div>
+  );
+}
+
 function resolveLanguage(mode: LanguageMode): UiLanguage {
   if (mode === "zh" || mode === "en") return mode;
   return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
@@ -608,13 +675,20 @@ function Popup({ snapshot, refresh, error }: { snapshot: AppSnapshot; refresh: (
     () => [...snapshot.ghostTabs].sort((a, b) => a.lastActivatedAt - b.lastActivatedAt).slice(0, 10),
     [snapshot.ghostTabs]
   );
+  const popupSections = [
+    { id: "recall", label: t.recall, count: recallCount, tabs: recallTop },
+    { id: "ghosts", label: t.ghostTabs, count: snapshot.ghostTabs.length, tabs: ghostTop }
+  ].filter((section) => section.count > 0);
 
   return (
     <main className="popup-body flex flex-col gap-3 overflow-x-hidden p-4">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">{t.appName}</h1>
-          <p className="text-xs text-muted-foreground">{t.tagline}</p>
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <AppLogo size="sm" />
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold">{t.appName}</h1>
+            <p className="truncate text-xs text-muted-foreground">{t.tagline}</p>
+          </div>
         </div>
         <Button variant="ghost" size="icon" title={t.settings} onClick={() => chrome.runtime.openOptionsPage()}>
           <Settings className="h-4 w-4" />
@@ -629,18 +703,22 @@ function Popup({ snapshot, refresh, error }: { snapshot: AppSnapshot; refresh: (
         <Metric label={t.today} value={snapshot.todayCount} />
       </div>
 
-      <Tabs defaultValue="recall" className="grid min-w-0 gap-2">
-        <TabsList className="grid h-10 w-full min-w-0 grid-cols-2 overflow-hidden p-1">
-          <TabsTrigger value="recall" className="h-full min-w-0 gap-1 overflow-hidden px-2">{t.recall} <TabCount value={recallCount} /></TabsTrigger>
-          <TabsTrigger value="ghosts" className="h-full min-w-0 gap-1 overflow-hidden px-2">{t.ghostTabs} <TabCount value={snapshot.ghostTabs.length} /></TabsTrigger>
-        </TabsList>
-        <TabsContent value="recall" className="mt-0">
-          <PopupTopList tabs={recallTop} refresh={refresh} />
-        </TabsContent>
-        <TabsContent value="ghosts" className="mt-0">
-          <PopupTopList tabs={ghostTop} refresh={refresh} />
-        </TabsContent>
-      </Tabs>
+      {popupSections.length === 1 ? (
+        <PopupSingleSection tabs={popupSections[0].tabs} refresh={refresh} />
+      ) : (
+        <Tabs defaultValue={popupSections[0]?.id ?? "recall"} className="grid min-w-0 gap-2 overflow-hidden">
+          <TabsList className="grid h-10 w-full min-w-0 grid-cols-2 overflow-hidden p-1">
+            <TabsTrigger value="recall" className="h-full min-w-0 gap-1 overflow-hidden px-2">{t.recall} <TabCount value={recallCount} /></TabsTrigger>
+            <TabsTrigger value="ghosts" className="h-full min-w-0 gap-1 overflow-hidden px-2">{t.ghostTabs} <TabCount value={snapshot.ghostTabs.length} /></TabsTrigger>
+          </TabsList>
+          <TabsContent value="recall" className="mt-0 min-w-0 overflow-hidden">
+            <PopupTopList tabs={recallTop} refresh={refresh} />
+          </TabsContent>
+          <TabsContent value="ghosts" className="mt-0 min-w-0 overflow-hidden">
+            <PopupTopList tabs={ghostTop} refresh={refresh} />
+          </TabsContent>
+        </Tabs>
+      )}
 
       {snapshot.lastUndo ? (
         <Button
@@ -663,6 +741,7 @@ function Popup({ snapshot, refresh, error }: { snapshot: AppSnapshot; refresh: (
 
 function Workspace({ page, snapshot, refresh }: { page: Page; snapshot: AppSnapshot; refresh: () => Promise<void> }) {
   const { t } = useI18n();
+  const [logoOpen, setLogoOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [filters, setFilters] = useState<RecallFilters>({ archivedOnly: false, time: "all", source: "all", contentType: "all", importance: "all", readingStatus: "all", color: "all", topic: "all", entity: "all" });
@@ -698,9 +777,12 @@ function Workspace({ page, snapshot, refresh }: { page: Page; snapshot: AppSnaps
       <section className="border-b bg-card">
         <div className="mx-auto flex max-w-[1600px] flex-col gap-5 px-5 py-6">
           <header className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold tracking-normal">{t.appName}</h1>
-              <p className="text-sm text-muted-foreground">{t.tagline}</p>
+            <div className="flex min-w-0 items-center gap-3">
+              <AppLogo size="lg" onClick={() => setLogoOpen(true)} />
+              <div className="min-w-0">
+                <h1 className="text-2xl font-semibold tracking-normal">{t.appName}</h1>
+                <p className="text-sm text-muted-foreground">{t.tagline}</p>
+              </div>
             </div>
             <div className="flex gap-2">
               <FieldGuideDialog />
@@ -722,7 +804,7 @@ function Workspace({ page, snapshot, refresh }: { page: Page; snapshot: AppSnaps
               placeholder={t.searchPlaceholder}
             />
             </div>
-            <Button className="h-12 px-5" disabled={isSearching} onClick={submitSearch}>
+            <Button variant="secondary" className="h-12 px-5" disabled={isSearching} onClick={submitSearch}>
               <Search className="h-4 w-4" /> {isSearching ? `${t.search}...` : t.search}
             </Button>
           </div>
@@ -732,6 +814,7 @@ function Workspace({ page, snapshot, refresh }: { page: Page; snapshot: AppSnaps
       <section className="mx-auto max-w-[1600px] px-5 py-6">
         <Dashboard snapshot={snapshot} results={results} query={submittedQuery} filters={filters} setFilters={setFilters} refresh={refresh} isSearching={isSearching} />
       </section>
+      <LogoShowcase open={logoOpen} onOpenChange={setLogoOpen} />
     </main>
   );
 }
@@ -1052,6 +1135,7 @@ function ResultGrid({ results, fallbackTabs, refresh }: { results: RecallResult[
 function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: () => Promise<void> }) {
   const { language, t } = useI18n();
   const notify = useToast();
+  const [logoOpen, setLogoOpen] = useState(false);
   const [blacklist, setBlacklist] = useState(snapshot.settings.blacklistDomains.join("\n"));
   const [deepSeekStatus, setDeepSeekStatus] = useState<string | null>(null);
   const [deepSeekTesting, setDeepSeekTesting] = useState(false);
@@ -1090,9 +1174,12 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-4xl content-start items-start gap-5 px-5 py-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">{t.settings}</h1>
-          <p className="text-sm text-muted-foreground">{t.browserMemoryLocal}</p>
+        <div className="flex min-w-0 items-center gap-3">
+          <AppLogo size="lg" onClick={() => setLogoOpen(true)} />
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold">{t.settings}</h1>
+            <p className="text-sm text-muted-foreground">{t.browserMemoryLocal}</p>
+          </div>
         </div>
         <Button
           variant="outline"
@@ -1383,6 +1470,7 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
       </Card>
         </TabsContent>
       </Tabs>
+      <LogoShowcase open={logoOpen} onOpenChange={setLogoOpen} />
     </main>
   );
 }
@@ -1500,7 +1588,7 @@ function TabListRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemory | 
   const readingStatus = enumMeta("readingStatus", tab.card.readingStatus, language);
   const statusLabel = reasonVariant === "ghost" ? t.ghostStatus : tab.archived ? t.archived : t.active;
   return (
-    <div className="grid gap-3 px-4 py-3 lg:grid-cols-[minmax(320px,1fr)_minmax(420px,760px)] lg:items-center">
+    <div className="grid min-w-0 gap-3 px-4 py-3 2xl:grid-cols-[minmax(0,1fr)_minmax(440px,760px)] 2xl:items-center">
       <div className="flex min-w-0 items-start gap-3">
         <Favicon tab={tab} />
         <div className="min-w-0 flex-1">
@@ -1510,7 +1598,7 @@ function TabListRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemory | 
                 <Sparkles className="h-3.5 w-3.5" aria-label={t.aiEnhanced} />
               </span>
             ) : null}
-            <span className="line-clamp-2 min-w-0">{tab.card.summary}</span>
+            <span className="line-clamp-2 min-w-0 break-words [overflow-wrap:anywhere]">{tab.card.summary}</span>
           </button>
           <div className="mt-1 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
             <span className="truncate" title={tab.url}>{tab.url}</span>
@@ -1555,14 +1643,20 @@ function TabListRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemory | 
 
 function Favicon({ tab }: { tab: TabMemory | RecallResult }) {
   const [failed, setFailed] = useState(false);
+  const [lowContrast, setLowContrast] = useState(false);
   if (tab.favIconUrl && !failed) {
     return (
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border bg-background p-1.5">
+      <div className={cn(
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-md border p-1.5 transition-colors",
+        lowContrast ? "border-slate-800 bg-slate-950" : "bg-background"
+      )}>
         <img
           src={tab.favIconUrl}
           alt=""
-          className="h-6 w-6 rounded-sm object-contain"
+          className="favicon-image h-6 w-6 rounded-sm object-contain"
           loading="lazy"
+          crossOrigin="anonymous"
+          onLoad={(event) => setLowContrast(isLowContrastFavicon(event.currentTarget))}
           onError={() => setFailed(true)}
         />
       </div>
@@ -1580,6 +1674,41 @@ function reasonClassName(variant: ReasonVariant) {
   if (variant === "ghost") return `${base} border-amber-500 bg-amber-500/10 text-amber-800 dark:text-amber-200`;
   if (variant === "recall") return `${base} border-sky-500 bg-sky-500/10 text-sky-800 dark:text-sky-200`;
   return "truncate text-muted-foreground/85";
+}
+
+function isLowContrastFavicon(image: HTMLImageElement) {
+  try {
+    const canvas = document.createElement("canvas");
+    const size = 24;
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) return false;
+
+    context.drawImage(image, 0, 0, size, size);
+    const { data } = context.getImageData(0, 0, size, size);
+    let visiblePixels = 0;
+    let brightPixels = 0;
+
+    for (let index = 0; index < data.length; index += 4) {
+      const alpha = data[index + 3];
+      if (alpha < 32) continue;
+
+      visiblePixels++;
+      const red = data[index];
+      const green = data[index + 1];
+      const blue = data[index + 2];
+      const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+      if (luminance > 224) {
+        brightPixels++;
+      }
+    }
+
+    if (visiblePixels < 20) return true;
+    return brightPixels / visiblePixels > 0.72;
+  } catch {
+    return true;
+  }
 }
 
 function EditCardButton({ tab, refresh, compact = false }: { tab: TabMemory | RecallResult; refresh: () => Promise<void>; compact?: boolean }) {
@@ -1659,10 +1788,19 @@ function splitCsv(value: string) {
   return value.split(",").map((item) => item.trim()).filter(Boolean).slice(0, 12);
 }
 
+function PopupSingleSection({ tabs, refresh }: { tabs: TabMemory[]; refresh: () => Promise<void> }) {
+  return (
+    <div className="grid min-w-0 gap-2 overflow-hidden">
+      <h2 className="px-1 text-sm font-semibold text-foreground">Top 10</h2>
+      <PopupTopList tabs={tabs} refresh={refresh} />
+    </div>
+  );
+}
+
 function PopupTopList({ tabs, refresh }: { tabs: TabMemory[]; refresh: () => Promise<void> }) {
   const { t } = useI18n();
   return (
-    <section className="rounded-md border bg-card">
+    <section className="min-w-0 overflow-hidden rounded-md border bg-card">
       {tabs.length ? (
         <div className="divide-y">
           {tabs.map((tab) => (
@@ -1679,17 +1817,28 @@ function PopupTopList({ tabs, refresh }: { tabs: TabMemory[]; refresh: () => Pro
 function PopupListItem({ tab, refresh }: { tab: TabMemory; refresh: () => Promise<void> }) {
   const { language, t } = useI18n();
   const [failed, setFailed] = useState(false);
+  const [lowContrast, setLowContrast] = useState(false);
   return (
     <button
-      className="flex w-full min-w-0 items-start gap-2 px-3 py-2 text-left hover:bg-accent"
+      className="flex w-full min-w-0 items-start gap-2 overflow-hidden px-3 py-2 text-left hover:bg-accent"
       onClick={async () => {
         await restoreTab(tab.id);
         await refresh();
       }}
     >
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded border bg-background text-[10px] font-semibold">
+      <span className={cn(
+        "flex h-7 w-7 shrink-0 items-center justify-center rounded border text-[10px] font-semibold transition-colors",
+        tab.favIconUrl && !failed && lowContrast ? "border-slate-800 bg-slate-950 text-white" : "bg-background"
+      )}>
         {tab.favIconUrl && !failed ? (
-          <img src={tab.favIconUrl} alt="" className="h-4 w-4 rounded-sm object-contain" onError={() => setFailed(true)} />
+          <img
+            src={tab.favIconUrl}
+            alt=""
+            className="favicon-image h-4 w-4 rounded-sm object-contain"
+            crossOrigin="anonymous"
+            onLoad={(event) => setLowContrast(isLowContrastFavicon(event.currentTarget))}
+            onError={() => setFailed(true)}
+          />
         ) : (
           tab.domain.slice(0, 2).toUpperCase()
         )}
@@ -1701,7 +1850,7 @@ function PopupListItem({ tab, refresh }: { tab: TabMemory; refresh: () => Promis
               <Sparkles className="h-3.5 w-3.5" aria-label={t.aiEnhanced} />
             </span>
           ) : null}
-          <span className="line-clamp-2 min-w-0 break-words">{tab.card.summary}</span>
+          <span className="line-clamp-2 min-w-0 break-words [overflow-wrap:anywhere]">{tab.card.summary}</span>
         </span>
         <span className="block truncate text-xs text-muted-foreground">
           {tab.domain} · {formatTime(tab.lastActivatedAt, Date.now(), language)}

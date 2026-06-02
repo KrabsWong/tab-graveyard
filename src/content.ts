@@ -11,16 +11,20 @@ if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
   tabGraveyardWindow.__tabGraveyardContentLoaded = true;
   console.info("[Tab Graveyard][content]", "loaded", { url: location.href });
 
-  chrome.runtime.onMessage.addListener((message: ResurfaceMessage) => {
-    console.info("[Tab Graveyard][content]", "message", { type: message.type, count: message.tabs?.length ?? 0, url: location.href });
-    if (message.type !== "TAB_GRAVEYARD_RESURFACE" || !message.tabs.length) return;
-    showResurface(message.tabs, message.language ?? "en", message.theme ?? "system");
-  });
+  try {
+    chrome.runtime.onMessage.addListener((message: ResurfaceMessage) => {
+      console.info("[Tab Graveyard][content]", "message", { type: message.type, count: message.tabs?.length ?? 0, url: location.href });
+      if (message.type !== "TAB_GRAVEYARD_RESURFACE" || !message.tabs.length) return;
+      showResurface(message.tabs, message.language ?? "en", message.theme ?? "system");
+    });
+  } catch {
+    tabGraveyardWindow.__tabGraveyardContentLoaded = false;
+  }
 
   let lastTick = Date.now();
   let lastScrollSignal = 0;
 
-  window.setInterval(() => {
+  const heartbeat = window.setInterval(() => {
     if (document.visibilityState !== "visible") {
       lastTick = Date.now();
       return;
@@ -28,7 +32,9 @@ if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
     const now = Date.now();
     const activeMs = Math.min(now - lastTick, 20_000);
     lastTick = now;
-    sendContentSignal({ activeMs, maxScrollPercent: getScrollPercent(), referrerUrl: document.referrer || undefined });
+    if (!sendContentSignal({ activeMs, maxScrollPercent: getScrollPercent(), referrerUrl: document.referrer || undefined })) {
+      window.clearInterval(heartbeat);
+    }
   }, 15_000);
 
   window.addEventListener("scroll", () => {
@@ -42,7 +48,7 @@ if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
     sendContentSignal({ copiedTextCount: 1, maxScrollPercent: getScrollPercent(), referrerUrl: document.referrer || undefined });
     const text = window.getSelection()?.toString().trim();
     if (text && /^https?:\/\//i.test(text)) {
-      chrome.runtime.sendMessage({ type: "copyUrlTrigger", url: text });
+      sendRuntimeMessage({ type: "copyUrlTrigger", url: text });
     }
   });
 }
@@ -114,8 +120,8 @@ function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", th
 
   const ids = tabs.map((tab) => tab.id);
   const openTabs = (selectedTabs: ResurfaceMessage["tabs"]) => {
-    chrome.runtime.sendMessage({ type: "resurfaceAction", tabIds: selectedTabs.map((tab) => tab.id), action: "opened" });
-    selectedTabs.forEach((tab) => chrome.runtime.sendMessage({ type: "openUrl", url: tab.url }));
+    sendRuntimeMessage({ type: "resurfaceAction", tabIds: selectedTabs.map((tab) => tab.id), action: "opened" });
+    selectedTabs.forEach((tab) => sendRuntimeMessage({ type: "openUrl", url: tab.url }));
     root.remove();
   };
   root.querySelectorAll<HTMLButtonElement>("[data-url-index]").forEach((button) => {
@@ -125,11 +131,11 @@ function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", th
     });
   });
   root.querySelector<HTMLButtonElement>('[data-action="dismiss"]')?.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ type: "resurfaceAction", tabIds: ids, action: "dismissed" });
+    sendRuntimeMessage({ type: "resurfaceAction", tabIds: ids, action: "dismissed" });
     root.remove();
   });
   root.querySelector<HTMLButtonElement>('[data-action="open-graveyard"]')?.addEventListener("click", () => {
-    chrome.runtime.sendMessage({ type: "openDashboard" });
+    sendRuntimeMessage({ type: "openDashboard" });
     root.remove();
   });
   document.documentElement.append(root);
@@ -182,7 +188,19 @@ function getFaviconFallback(domain: string) {
 }
 
 function sendContentSignal(signal: { activeMs?: number; maxScrollPercent?: number; copiedTextCount?: number; referrerUrl?: string }) {
-  chrome.runtime.sendMessage({ type: "contentSignal", url: location.href, signal });
+  return sendRuntimeMessage({ type: "contentSignal", url: location.href, signal });
+}
+
+function sendRuntimeMessage(message: Record<string, unknown>) {
+  try {
+    if (typeof chrome === "undefined" || !chrome.runtime?.id) return false;
+    chrome.runtime.sendMessage(message, () => {
+      void chrome.runtime.lastError;
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function getScrollPercent() {
