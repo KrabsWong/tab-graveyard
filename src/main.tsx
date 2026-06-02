@@ -1123,14 +1123,6 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             showOptionDescription
             onChange={(theme) => update({ theme: theme as SettingsType["theme"] })}
           />
-          <SelectRow label={t.archiveTrust} value={snapshot.settings.archiveTrustStage} options={enumOptions("archiveTrust", ["manual", "preview", "auto"], language)} description={t.archiveTrustDescription} showOptionDescription onChange={(archiveTrustStage) => update({ archiveTrustStage: archiveTrustStage as SettingsType["archiveTrustStage"] })} />
-          <ToggleRow
-            label={t.archivePreannounce}
-            description={t.archivePreannounceDescription}
-            checked={snapshot.settings.archivePreannounce}
-            disabled={snapshot.settings.archiveTrustStage !== "auto"}
-            onChange={(archivePreannounce) => update({ archivePreannounce })}
-          />
           <SelectRow
             label={t.ghostThreshold}
             value={String(snapshot.settings.ghostThresholdHours)}
@@ -1139,15 +1131,27 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             showOptionDescription
             onChange={(value) => update({ ghostThresholdHours: Number(value) })}
           />
-          <SelectRow
-            label={t.resurfaceFrequency}
-            value={String(snapshot.settings.resurfaceRule.maxPerDay)}
-            options={["1", "3", "5"].map((count) => ({ value: count, label: count, description: interpolate(t.resurfaceFrequencyOption, { count }) }))}
-            description={t.resurfaceFrequencyDescription}
-            showOptionDescription
-            onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, maxPerDay: Number(value) } })}
-          />
-          <ToggleRow label={t.resurface} description={t.resurfaceDescription} checked={snapshot.settings.resurfaceEnabled} onChange={(resurfaceEnabled) => update({ resurfaceEnabled })} />
+          <SettingGroup title={t.archiveTrust}>
+            <SelectRow label={t.archiveTrust} value={snapshot.settings.archiveTrustStage} options={enumOptions("archiveTrust", ["manual", "preview", "auto"], language)} description={t.archiveTrustDescription} showOptionDescription onChange={(archiveTrustStage) => update({ archiveTrustStage: archiveTrustStage as SettingsType["archiveTrustStage"] })} />
+            <ToggleRow
+              label={t.archivePreannounce}
+              description={t.archivePreannounceDescription}
+              checked={snapshot.settings.archivePreannounce}
+              disabled={snapshot.settings.archiveTrustStage !== "auto"}
+              onChange={(archivePreannounce) => update({ archivePreannounce })}
+            />
+          </SettingGroup>
+          <SettingGroup title={t.resurface}>
+            <ToggleRow label={t.resurface} description={t.resurfaceDescription} checked={snapshot.settings.resurfaceEnabled} onChange={(resurfaceEnabled) => update({ resurfaceEnabled })} />
+            <SelectRow
+              label={t.resurfaceFrequency}
+              value={String(snapshot.settings.resurfaceRule.maxPerDay)}
+              options={["1", "3", "5"].map((count) => ({ value: count, label: count, description: interpolate(t.resurfaceFrequencyOption, { count }) }))}
+              description={t.resurfaceFrequencyDescription}
+              showOptionDescription
+              onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, maxPerDay: Number(value) } })}
+            />
+          </SettingGroup>
         </CardContent>
       </Card>
         </TabsContent>
@@ -1799,6 +1803,15 @@ function SettingLabel({ label, description }: { label: string; description?: str
       <span className="text-sm font-medium">{label}</span>
       {description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
     </span>
+  );
+}
+
+function SettingGroup({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="grid gap-4 rounded-md border p-4">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <div className="grid gap-5">{children}</div>
+    </section>
   );
 }
 
