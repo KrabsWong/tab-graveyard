@@ -943,10 +943,7 @@ function GraveyardBrowser({ tabs, refresh }: { tabs: TabMemory[]; refresh: () =>
       </div>
       {groups.map((group) => (
         <section key={group.key} className="grid gap-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-semibold">{group.label}</h2>
-            <span className="text-xs text-muted-foreground">{group.tabs.length} {t.tabs}</span>
-          </div>
+          <h2 className="text-base font-semibold">{group.label} <span className="text-sm font-normal text-muted-foreground">({group.tabs.length})</span></h2>
           <TabList tabs={group.tabs} refresh={refresh} />
         </section>
       ))}
