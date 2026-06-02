@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -903,7 +904,7 @@ function Dashboard({
         <TabsTrigger value="sessions">{t.sessions} <TabCount value={scopedSessions.length} /></TabsTrigger>
       </TabsList>
       <TabsContent value="recall">
-        <div className="grid items-start gap-5 lg:grid-cols-[210px_minmax(0,1fr)]">
+        <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(150px,210px)_minmax(0,1fr)]">
           <Facets snapshot={snapshot} filters={filters} setFilters={setFilters} />
           <div className="grid auto-rows-min gap-3">
             <RecallSynthesis query={query} results={scopedRecallResults} snapshot={snapshot} isSearching={isSearching} />
@@ -1100,12 +1101,12 @@ function Facets({ snapshot, filters, setFilters }: { snapshot: AppSnapshot; filt
   const snapshotTopics = Array.from(new Set(snapshot.tabs.flatMap((tab) => tab.card.topics))).slice(0, 16);
   const snapshotEntities = Array.from(new Set(snapshot.tabs.flatMap((tab) => tab.card.entities))).slice(0, 16);
   return (
-    <Card className="h-fit">
+    <Card className="h-fit min-w-0">
       <CardHeader>
         <CardTitle>{t.facets}</CardTitle>
         <CardDescription>{t.facetsDescription}</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3">
+      <CardContent className="grid min-w-0 gap-3">
         <SelectRow label={t.time} value={filters.time ?? "all"} options={enumOptions("time", ["all", "today", "yesterday", "week", "last-week"], language)} onChange={(time) => setFilters((prev) => ({ ...prev, time: time as RecallFilters["time"] }))} />
         <SelectRow label={t.source} value={filters.source ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("source", ["twitter", "slack", "email", "search", "direct", "bookmark"], language)]} onChange={(source) => setFilters((prev) => ({ ...prev, source: source as RecallFilters["source"] }))} />
         <SelectRow label={t.type} value={filters.contentType ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("contentType", ["article", "video", "pdf", "tweet", "repo", "doc", "image", "saas"], language)]} onChange={(contentType) => setFilters((prev) => ({ ...prev, contentType: contentType as RecallFilters["contentType"] }))} />
@@ -1114,7 +1115,7 @@ function Facets({ snapshot, filters, setFilters }: { snapshot: AppSnapshot; filt
         <SelectRow label={t.color} value={filters.color ?? "all"} options={["all", "blue", "black", "slate", "orange", "white", "purple"]} onChange={(color) => setFilters((prev) => ({ ...prev, color }))} />
         <SelectRow label={t.topic} value={filters.topic ?? "all"} options={["all", ...snapshotTopics]} onChange={(topic) => setFilters((prev) => ({ ...prev, topic }))} />
         <SelectRow label={t.entity} value={filters.entity ?? "all"} options={["all", ...snapshotEntities]} onChange={(entity) => setFilters((prev) => ({ ...prev, entity }))} />
-        <label className="flex items-center justify-between rounded-md border p-2 text-sm">
+        <label className="flex min-w-0 items-center justify-between gap-3 rounded-md border p-2 text-sm">
           {t.archivedOnly}
           <Switch checked={Boolean(filters.archivedOnly)} onCheckedChange={(archivedOnly) => setFilters((prev) => ({ ...prev, archivedOnly }))} />
         </label>
@@ -1993,13 +1994,18 @@ function SelectRow({
   const normalizedOptions = options.map((option) => (typeof option === "string" ? { value: option, label: option } : option));
   const selectedOption = normalizedOptions.find((option) => option.value === value);
   return (
-    <label className={`grid gap-1 text-sm ${disabled ? "opacity-60" : ""}`}>
+    <label className={`grid min-w-0 gap-1 text-sm ${disabled ? "opacity-60" : ""}`}>
       <SettingLabel label={label} description={description} />
-      <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
+      <Select value={value} disabled={disabled} onValueChange={onChange}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
         {normalizedOptions.map((item) => {
-          return <option key={item.value} value={item.value}>{item.label}</option>;
+          return <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>;
         })}
-      </select>
+        </SelectContent>
+      </Select>
       {showOptionDescription && selectedOption?.description ? <span className="text-xs text-muted-foreground">{selectedOption.description}</span> : null}
     </label>
   );
