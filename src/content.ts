@@ -2,7 +2,7 @@ type ResurfaceMessage = {
   type: "TAB_GRAVEYARD_RESURFACE";
   language?: "en" | "zh";
   theme?: "system" | "light" | "dark";
-  tabs: Array<{ id: string; title: string; domain: string; url: string }>;
+  tabs: Array<{ id: string; title: string; domain: string; url: string; favIconUrl?: string }>;
 };
 
 const tabGraveyardWindow = window as Window & { __tabGraveyardContentLoaded?: boolean };
@@ -87,6 +87,11 @@ function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", th
         .map(
           (tab, index) => `
           <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+            ${tab.favIconUrl ? `
+              <img src="${escapeHtml(tab.favIconUrl)}" alt="" style="flex:0 0 auto;width:28px;height:28px;border-radius:6px;border:1px solid ${colors.border};background:${colors.background};object-fit:contain;padding:3px;">
+            ` : `
+              <div aria-hidden="true" style="flex:0 0 auto;display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;border-radius:6px;border:1px solid ${colors.border};background:${colors.iconBackground};color:${colors.foreground};font-size:11px;font-weight:700;">${escapeHtml(getFaviconFallback(tab.domain))}</div>
+            `}
             <button data-url-index="${index}" style="min-width:0;flex:1;text-align:left;border:0;background:transparent;padding:0;cursor:pointer;color:inherit;">
               <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(tab.title)}</div>
               <div style="font-size:11px;color:${colors.muted};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(tab.domain)}</div>
@@ -170,6 +175,10 @@ function getThemeColors(theme: "system" | "light" | "dark") {
     border: "#e4e4e7",
     shadow: "0 10px 30px rgba(0,0,0,.12)"
   };
+}
+
+function getFaviconFallback(domain: string) {
+  return domain.replace(/^www\./, "").slice(0, 1).toUpperCase() || "?";
 }
 
 function sendContentSignal(signal: { activeMs?: number; maxScrollPercent?: number; copiedTextCount?: number; referrerUrl?: string }) {

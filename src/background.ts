@@ -721,7 +721,7 @@ async function sendResurfaceMessage(tabId: number, tabs: TabMemory[]) {
     type: "TAB_GRAVEYARD_RESURFACE",
     language,
     theme: state.settings.theme,
-    tabs: tabs.map((item) => ({ id: item.id, title: item.title, domain: item.domain, url: item.url }))
+    tabs: tabs.map((item) => ({ id: item.id, title: item.title, domain: item.domain, url: item.url, favIconUrl: item.favIconUrl }))
   };
   let lastError: unknown;
   for (let attempt = 0; attempt < 4; attempt += 1) {
