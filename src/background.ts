@@ -669,7 +669,7 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
     logResurface("skip:max-per-day", { shownToday, maxPerDay: state.settings.resurfaceRule.maxPerDay });
     return;
   }
-  if (lastShown && Date.now() - lastShown.createdAt < state.settings.resurfaceRule.cooldownHours * 60 * 60 * 1000) {
+  if (state.settings.resurfaceRule.cooldownHours > 0 && lastShown && Date.now() - lastShown.createdAt < state.settings.resurfaceRule.cooldownHours * 60 * 60 * 1000) {
     logResurface("skip:cooldown", {
       lastShownAt: new Date(lastShown.createdAt).toISOString(),
       cooldownHours: state.settings.resurfaceRule.cooldownHours

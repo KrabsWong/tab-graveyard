@@ -190,6 +190,9 @@ const messages = {
     resurfaceFrequencyAlwaysDescription: "No daily limit. Matching pages can resurface whenever cooldown allows.",
     resurfaceCooldownDescription: "Minimum time between two resurfacing suggestions, even when more related archives match.",
     resurfaceCooldownOption: "Wait at least {hours} hours before showing another resurfacing suggestion.",
+    resurfaceCooldownMinutesOption: "Wait at least {minutes} minutes before showing another resurfacing suggestion.",
+    resurfaceCooldownNone: "No cooldown",
+    resurfaceCooldownNoneDescription: "Show a resurfacing suggestion whenever a related page matches, subject only to the daily frequency setting.",
     domainBlacklist: "Domain Blacklist",
     blacklistDescription: "One domain, keyword, or wildcard per line. Example: *.abc.com blocks abc.com and all subdomains.",
     saveBlacklist: "Save blacklist",
@@ -388,6 +391,9 @@ const messages = {
     resurfaceFrequencyAlwaysDescription: "不限制每日次数。只要命中相关归档，并满足冷却间隔，就可以继续提示。",
     resurfaceCooldownDescription: "两次主动唤醒之间至少间隔多久，即使命中了更多相关归档也不会连续弹出。",
     resurfaceCooldownOption: "至少等待 {hours} 小时后，才会展示下一次主动唤醒提示。",
+    resurfaceCooldownMinutesOption: "至少等待 {minutes} 分钟后，才会展示下一次主动唤醒提示。",
+    resurfaceCooldownNone: "不冷却",
+    resurfaceCooldownNoneDescription: "只要命中相关归档，就可以展示主动唤醒提示，仅受每日频率限制。",
     domainBlacklist: "域名黑名单",
     blacklistDescription: "每行一个域名、关键词或通配符。例如：*.abc.com 会屏蔽 abc.com 及所有子域名。",
     saveBlacklist: "保存黑名单",
@@ -1188,7 +1194,15 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             <SelectRow
               label={t.resurfaceCooldown}
               value={String(snapshot.settings.resurfaceRule.cooldownHours)}
-              options={["1", "3", "6", "12", "24"].map((hours) => ({ value: hours, label: `${hours}h`, description: interpolate(t.resurfaceCooldownOption, { hours }) }))}
+              options={[
+                { value: "0", label: t.resurfaceCooldownNone, description: t.resurfaceCooldownNoneDescription },
+                ...[
+                  { value: "0.0833333333", label: "5m", minutes: "5" },
+                  { value: "0.25", label: "15m", minutes: "15" },
+                  { value: "0.5", label: "30m", minutes: "30" }
+                ].map((item) => ({ value: item.value, label: item.label, description: interpolate(t.resurfaceCooldownMinutesOption, { minutes: item.minutes }) })),
+                ...["1", "3", "6", "12", "24"].map((hours) => ({ value: hours, label: `${hours}h`, description: interpolate(t.resurfaceCooldownOption, { hours }) }))
+              ]}
               description={t.resurfaceCooldownDescription}
               disabled={snapshot.settings.recordingPaused}
               showOptionDescription
