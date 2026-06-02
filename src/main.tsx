@@ -142,13 +142,18 @@ const messages = {
     resurfaceFrequency: "Resurface frequency",
     archiveTrust: "Archive trust stage",
     archivePreannounce: "Preannounce archive",
+    archivePreannounceDescription: "Create a visible archive preview before automatic or preview-stage archiving is confirmed.",
     language: "Language",
     languageDescription: "Use system language, Chinese, or English.",
+    languageSystemDescription: "Follow Chrome or operating-system language when choosing the interface language.",
+    languageChineseDescription: "Always show the interface in Chinese.",
+    languageEnglishDescription: "Always show the interface in English.",
     theme: "Theme",
     themeDescription: "Use system appearance, light mode, or dark mode.",
     light: "Light",
     dark: "Dark",
     aiMode: "AI mode",
+    aiModeDescription: "Controls whether configured AI providers may help with recall, summaries, and naming.",
     deepSeekProvider: "DeepSeek API",
     deepSeekDescription: "Configure an OpenAI-compatible DeepSeek endpoint. The key is stored locally and only used when AI enhancement is enabled or you test the connection.",
     deepSeekEnabled: "Enable DeepSeek",
@@ -156,7 +161,9 @@ const messages = {
     deepSeekApiKey: "API Key",
     deepSeekApiKeyDescription: "Stored in local browser storage. It is not uploaded anywhere except to your configured DeepSeek endpoint.",
     deepSeekModel: "Model",
+    deepSeekModelDescription: "DeepSeek model name used for connection tests, memory enhancement, query expansion, and session naming.",
     deepSeekBaseUrl: "Base URL",
+    deepSeekBaseUrlDescription: "OpenAI-compatible endpoint base URL. Keep the default unless you use a proxy or compatible gateway.",
     deepSeekTest: "Test connection",
     deepSeekTesting: "Testing...",
     deepSeekTestOk: "DeepSeek connected",
@@ -165,6 +172,11 @@ const messages = {
     deepSeekEnhanceDescription: "Updates local info cards and session names using title, URL, domain, and existing local metadata only.",
     deepSeekEnhanceOk: "Enhanced {tabs} tabs and renamed {sessions} sessions",
     ghostThreshold: "Ghost threshold",
+    ghostThresholdDescription: "How long a normal, low-risk tab must stay inactive before it can become a Ghost Tab.",
+    ghostThresholdOption: "{hours} hours without activity before a tab can be considered a ghost.",
+    archiveTrustDescription: "Controls how much confirmation is required before Ghost Tabs are archived.",
+    resurfaceFrequencyDescription: "Maximum number of archived-memory suggestions Tab Graveyard may show per day.",
+    resurfaceFrequencyOption: "At most {count} resurfacing suggestions per day.",
     domainBlacklist: "Domain Blacklist",
     blacklistDescription: "One domain or keyword per line. Matching pages are not recorded.",
     saveBlacklist: "Save blacklist",
@@ -308,13 +320,18 @@ const messages = {
     resurfaceFrequency: "主动唤醒频率",
     archiveTrust: "归档信任阶段",
     archivePreannounce: "归档前预告",
+    archivePreannounceDescription: "自动归档或预览归档前，先展示一条可确认的归档预览。",
     language: "界面语言",
     languageDescription: "跟随系统，或固定为中文/英文。",
+    languageSystemDescription: "根据 Chrome 或系统语言自动选择界面语言。",
+    languageChineseDescription: "界面始终显示为中文。",
+    languageEnglishDescription: "界面始终显示为英文。",
     theme: "主题模式",
     themeDescription: "跟随系统，或手动切换明亮/黑夜模式。",
     light: "明亮",
     dark: "黑夜",
     aiMode: "AI 模式",
+    aiModeDescription: "控制已配置的 AI 是否可以参与找回、摘要增强和会话命名。",
     deepSeekProvider: "DeepSeek API",
     deepSeekDescription: "配置兼容 OpenAI 格式的 DeepSeek 接口。API Key 保存在本地，只会在启用 AI 增强或手动测试连接时使用。",
     deepSeekEnabled: "启用 DeepSeek",
@@ -322,7 +339,9 @@ const messages = {
     deepSeekApiKey: "API Key",
     deepSeekApiKeyDescription: "保存在浏览器本地存储中。除你配置的 DeepSeek 接口外，不会上传到其他地方。",
     deepSeekModel: "模型",
+    deepSeekModelDescription: "用于连接测试、记忆增强、查询扩展和会话命名的 DeepSeek 模型名。",
     deepSeekBaseUrl: "Base URL",
+    deepSeekBaseUrlDescription: "兼容 OpenAI 格式的接口地址。除非使用代理或兼容网关，否则保持默认即可。",
     deepSeekTest: "测试连接",
     deepSeekTesting: "测试中...",
     deepSeekTestOk: "DeepSeek 已连接",
@@ -331,6 +350,11 @@ const messages = {
     deepSeekEnhanceDescription: "只使用标题、URL、域名和现有本地信息卡，更新信息卡和会话命名。",
     deepSeekEnhanceOk: "已增强 {tabs} 个标签，并重命名 {sessions} 个会话",
     ghostThreshold: "幽灵阈值",
+    ghostThresholdDescription: "普通低风险标签需要多久未活跃，才可能被判定为幽灵标签。",
+    ghostThresholdOption: "连续 {hours} 小时未活跃后，标签才可能进入幽灵标签。",
+    archiveTrustDescription: "控制幽灵标签进入归档前需要多少确认。",
+    resurfaceFrequencyDescription: "每天最多展示多少次归档记忆的主动唤醒提示。",
+    resurfaceFrequencyOption: "每天最多展示 {count} 次主动唤醒提示。",
     domainBlacklist: "域名黑名单",
     blacklistDescription: "每行一个域名或关键词。匹配页面不会被记录。",
     saveBlacklist: "保存黑名单",
@@ -444,7 +468,10 @@ function enumMeta(kind: EnumKind, value: string, language: UiLanguage) {
 }
 
 function enumOptions(kind: EnumKind, values: string[], language: UiLanguage) {
-  return values.map((value) => ({ value, label: enumMeta(kind, value, language).label }));
+  return values.map((value) => {
+    const meta = enumMeta(kind, value, language);
+    return { value, label: meta.label, description: meta.description };
+  });
 }
 
 function getDashboardTabFromHash() {
@@ -1051,16 +1078,17 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
           <ToggleRow label={t.pauseRecording} description={t.pauseRecordingDescription} checked={snapshot.settings.recordingPaused} onChange={(recordingPaused) => update({ recordingPaused })} />
           <ToggleRow label={t.strictPrivacy} description={t.strictPrivacyDescription} checked={snapshot.settings.strictPrivacy} onChange={(strictPrivacy) => update({ strictPrivacy, aiMode: strictPrivacy ? "local-only" : snapshot.settings.aiMode })} />
           <ToggleRow label={t.resurface} description={t.resurfaceDescription} checked={snapshot.settings.resurfaceEnabled} onChange={(resurfaceEnabled) => update({ resurfaceEnabled })} />
-          <ToggleRow label={t.archivePreannounce} description={t.previewArchive} checked={snapshot.settings.archivePreannounce} onChange={(archivePreannounce) => update({ archivePreannounce })} />
+          <ToggleRow label={t.archivePreannounce} description={t.archivePreannounceDescription} checked={snapshot.settings.archivePreannounce} onChange={(archivePreannounce) => update({ archivePreannounce })} />
           <SelectRow
             label={t.language}
             value={snapshot.settings.language}
             options={[
-              { value: "system", label: t.system },
-              { value: "zh", label: t.chinese },
-              { value: "en", label: t.english }
+              { value: "system", label: t.system, description: t.languageSystemDescription },
+              { value: "zh", label: t.chinese, description: t.languageChineseDescription },
+              { value: "en", label: t.english, description: t.languageEnglishDescription }
             ]}
             description={t.languageDescription}
+            showOptionDescription
             onChange={(language) => update({ language: language as SettingsType["language"] })}
           />
           <SelectRow
@@ -1068,12 +1096,27 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             value={snapshot.settings.theme}
             options={enumOptions("theme", ["system", "light", "dark"], language)}
             description={t.themeDescription}
+            showOptionDescription
             onChange={(theme) => update({ theme: theme as SettingsType["theme"] })}
           />
-          <SelectRow label={t.aiMode} value={snapshot.settings.aiMode} options={enumOptions("aiMode", ["smart", "local-first", "local-only"], language)} onChange={(aiMode) => update({ aiMode: aiMode as SettingsType["aiMode"], strictPrivacy: aiMode === "local-only" })} />
-          <SelectRow label={t.archiveTrust} value={snapshot.settings.archiveTrustStage} options={enumOptions("archiveTrust", ["manual", "preview", "auto"], language)} onChange={(archiveTrustStage) => update({ archiveTrustStage: archiveTrustStage as SettingsType["archiveTrustStage"] })} />
-          <SelectRow label={t.ghostThreshold} value={String(snapshot.settings.ghostThresholdHours)} options={["12", "24", "48", "168"]} onChange={(value) => update({ ghostThresholdHours: Number(value) })} />
-          <SelectRow label={t.resurfaceFrequency} value={String(snapshot.settings.resurfaceRule.maxPerDay)} options={["1", "3", "5"]} onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, maxPerDay: Number(value) } })} />
+          <SelectRow label={t.aiMode} value={snapshot.settings.aiMode} options={enumOptions("aiMode", ["smart", "local-first", "local-only"], language)} description={t.aiModeDescription} showOptionDescription onChange={(aiMode) => update({ aiMode: aiMode as SettingsType["aiMode"], strictPrivacy: aiMode === "local-only" })} />
+          <SelectRow label={t.archiveTrust} value={snapshot.settings.archiveTrustStage} options={enumOptions("archiveTrust", ["manual", "preview", "auto"], language)} description={t.archiveTrustDescription} showOptionDescription onChange={(archiveTrustStage) => update({ archiveTrustStage: archiveTrustStage as SettingsType["archiveTrustStage"] })} />
+          <SelectRow
+            label={t.ghostThreshold}
+            value={String(snapshot.settings.ghostThresholdHours)}
+            options={["12", "24", "48", "168"].map((hours) => ({ value: hours, label: `${hours}h`, description: interpolate(t.ghostThresholdOption, { hours }) }))}
+            description={t.ghostThresholdDescription}
+            showOptionDescription
+            onChange={(value) => update({ ghostThresholdHours: Number(value) })}
+          />
+          <SelectRow
+            label={t.resurfaceFrequency}
+            value={String(snapshot.settings.resurfaceRule.maxPerDay)}
+            options={["1", "3", "5"].map((count) => ({ value: count, label: count, description: interpolate(t.resurfaceFrequencyOption, { count }) }))}
+            description={t.resurfaceFrequencyDescription}
+            showOptionDescription
+            onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, maxPerDay: Number(value) } })}
+          />
         </CardContent>
       </Card>
 
@@ -1113,12 +1156,14 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
           />
           <TextRow
             label={t.deepSeekModel}
+            description={t.deepSeekModelDescription}
             value={snapshot.settings.deepSeek.model}
             placeholder="deepseek-chat"
             onChange={(model) => updateDeepSeek({ model })}
           />
           <TextRow
             label={t.deepSeekBaseUrl}
+            description={t.deepSeekBaseUrlDescription}
             value={snapshot.settings.deepSeek.baseUrl}
             placeholder="https://api.deepseek.com"
             onChange={(baseUrl) => updateDeepSeek({ baseUrl })}
@@ -1650,24 +1695,28 @@ function SelectRow({
   value,
   options,
   description,
+  showOptionDescription,
   onChange
 }: {
   label: string;
   value: string;
-  options: Array<string | { value: string; label: string }>;
+  options: Array<string | { value: string; label: string; description?: string }>;
   description?: string;
+  showOptionDescription?: boolean;
   onChange: (value: string) => void;
 }) {
+  const normalizedOptions = options.map((option) => (typeof option === "string" ? { value: option, label: option } : option));
+  const selectedOption = normalizedOptions.find((option) => option.value === value);
   return (
     <label className="grid gap-1 text-sm">
       <span className="font-medium">{label}</span>
       {description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
       <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={value} onChange={(event) => onChange(event.target.value)}>
-        {options.map((option) => {
-          const item = typeof option === "string" ? { value: option, label: option } : option;
+        {normalizedOptions.map((item) => {
           return <option key={item.value} value={item.value}>{item.label}</option>;
         })}
       </select>
+      {showOptionDescription && selectedOption?.description ? <span className="text-xs text-muted-foreground">{selectedOption.description}</span> : null}
     </label>
   );
 }
