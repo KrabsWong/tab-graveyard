@@ -67,26 +67,32 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
   ].join(";");
 
   const relatedText = tabs.length === 1 ? "1 related page" : `${tabs.length} related pages`;
-  const primaryActionText = tabs.length === 1 ? "Open" : `Open all ${tabs.length}`;
   root.innerHTML = `
     <div style="padding:14px 14px 10px;border-bottom:1px solid #e4e4e7;">
       <div style="font-size:13px;font-weight:700;">Tab Graveyard</div>
       <div style="font-size:12px;line-height:1.45;color:#71717a;margin-top:3px;">You looked at ${relatedText} before.</div>
     </div>
-    <div style="padding:10px 14px;display:grid;gap:8px;max-height:126px;overflow-y:${tabs.length > 3 ? "auto" : "visible"};">
+    <div style="padding:10px 14px;display:grid;gap:10px;max-height:150px;overflow-y:${tabs.length > 3 ? "auto" : "visible"};">
       ${tabs
         .map(
           (tab, index) => `
-          <button data-url-index="${index}" style="min-width:0;text-align:left;border:0;background:transparent;padding:0;cursor:pointer;color:inherit;">
-            <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(tab.title)}</div>
-            <div style="font-size:11px;color:#71717a;">${escapeHtml(tab.domain)}</div>
-          </button>`
+          <div style="display:flex;align-items:center;gap:10px;min-width:0;">
+            <button data-url-index="${index}" style="min-width:0;flex:1;text-align:left;border:0;background:transparent;padding:0;cursor:pointer;color:inherit;">
+              <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(tab.title)}</div>
+              <div style="font-size:11px;color:#71717a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(tab.domain)}</div>
+            </button>
+            <button data-url-index="${index}" title="Open" aria-label="Open ${escapeHtml(tab.title)}" style="flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1px solid #e4e4e7;background:#ffffff;color:#18181b;cursor:pointer;">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M7 17 17 7"></path>
+                <path d="M7 7h10v10"></path>
+              </svg>
+            </button>
+          </div>`
         )
         .join("")}
     </div>
-    <div style="display:flex;gap:8px;padding:0 14px 14px;">
-      <button data-action="open" style="height:32px;padding:0 12px;border-radius:6px;border:0;background:#18181b;color:#fafafa;font-size:12px;font-weight:700;cursor:pointer;">${primaryActionText}</button>
-      <button data-action="dismiss" style="height:32px;padding:0 12px;border-radius:6px;border:1px solid #e4e4e7;background:#ffffff;color:#09090b;font-size:12px;font-weight:700;cursor:pointer;">Dismiss</button>
+    <div style="display:flex;justify-content:flex-end;padding:0 14px 14px;">
+      <button data-action="dismiss" style="height:30px;padding:0 10px;border-radius:6px;border:1px solid #e4e4e7;background:#ffffff;color:#09090b;font-size:12px;font-weight:600;cursor:pointer;">Dismiss</button>
     </div>
   `;
 
@@ -106,10 +112,6 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
     chrome.runtime.sendMessage({ type: "resurfaceAction", tabIds: ids, action: "dismissed" });
     root.remove();
   });
-  root.querySelector<HTMLButtonElement>('[data-action="open"]')?.addEventListener("click", () => {
-    openTabs(tabs);
-  });
-
   document.documentElement.append(root);
   window.setTimeout(() => root.remove(), 12_000);
 }
