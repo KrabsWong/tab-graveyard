@@ -250,9 +250,6 @@ async function archiveGhosts(allowedIds?: Set<string>) {
   const ghostTabs = state.tabs.filter((tab) => isGhostTab(tab, state.settings, now) && (!allowedIds || allowedIds.has(tab.id)));
   const ids = new Set(ghostTabs.map((tab) => tab.id));
   const tabIdsToClose = ghostTabs.map((tab) => tab.tabId).filter((id): id is number => typeof id === "number");
-  if (tabIdsToClose.length) {
-    await chrome.tabs.remove(tabIdsToClose);
-  }
   const archivedTabs = ghostTabs.map((tab) => ({ ...tab, archived: true, archivedAt: now, tabId: undefined }));
   const next = addEvent(
     ensureSessions({
@@ -269,6 +266,13 @@ async function archiveGhosts(allowedIds?: Set<string>) {
     }
   );
   await setState(next);
+  for (const tabId of tabIdsToClose) {
+    try {
+      await chrome.tabs.remove(tabId);
+    } catch {
+      // The browser tab may already be gone; the memory should still be archived.
+    }
+  }
   return createSnapshot(next);
 }
 

@@ -42,6 +42,7 @@ const messages = {
     resurfaceHint: "Resurface: related archived pages will appear while you browse.",
     undoArchive: "Undo last archive",
     archiveGhostTabs: "Archive {count} Ghost Tabs",
+    archiveFailed: "Archive failed",
     openGraveyard: "Open Graveyard",
     continueMetric: "Continue where you left off",
     activeCount: "{count} active",
@@ -207,6 +208,7 @@ const messages = {
     resurfaceHint: "主动唤醒：浏览时会提示相关的归档页面。",
     undoArchive: "撤销上次归档",
     archiveGhostTabs: "归档 {count} 个幽灵标签",
+    archiveFailed: "归档失败",
     openGraveyard: "打开 Graveyard",
     continueMetric: "继续上次浏览",
     activeCount: "{count} 个活跃",
@@ -802,6 +804,7 @@ function RecallSynthesis({ query, results, snapshot, isSearching }: { query: str
 
 function GhostTabsPanel({ snapshot, tabs, refresh }: { snapshot: AppSnapshot; tabs: TabMemory[]; refresh: () => Promise<void> }) {
   const { language, t } = useI18n();
+  const notify = useToast();
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -809,9 +812,13 @@ function GhostTabsPanel({ snapshot, tabs, refresh }: { snapshot: AppSnapshot; ta
         <Button
           disabled={!snapshot.ghostTabs.length}
           onClick={async () => {
-            if (snapshot.settings.archiveTrustStage === "manual") await archiveGhosts();
-            else await previewArchive();
-            await refresh();
+            try {
+              if (snapshot.settings.archiveTrustStage === "manual") await archiveGhosts();
+              else await previewArchive();
+              await refresh();
+            } catch {
+              notify(t.archiveFailed);
+            }
           }}
         >
           <Ghost className="h-4 w-4" /> {snapshot.settings.archiveTrustStage === "manual" ? interpolate(t.archiveGhostTabs, { count: snapshot.ghostTabs.length }) : t.previewArchive}
@@ -820,7 +827,19 @@ function GhostTabsPanel({ snapshot, tabs, refresh }: { snapshot: AppSnapshot; ta
       {snapshot.archivePreview ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
           <span>{interpolate(t.archiveGhostTabs, { count: snapshot.archivePreview.tabIds.length })}</span>
-          <Button size="sm" onClick={async () => { await confirmArchivePreview(snapshot.archivePreview!.id); await refresh(); }}>{t.confirmArchive}</Button>
+          <Button
+            size="sm"
+            onClick={async () => {
+              try {
+                await confirmArchivePreview(snapshot.archivePreview!.id);
+                await refresh();
+              } catch {
+                notify(t.archiveFailed);
+              }
+            }}
+          >
+            {t.confirmArchive}
+          </Button>
         </div>
       ) : null}
       {tabs.length ? (
