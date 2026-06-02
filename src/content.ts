@@ -91,7 +91,8 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
         )
         .join("")}
     </div>
-    <div style="display:flex;justify-content:flex-end;padding:0 14px 14px;">
+    <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid #e4e4e7;padding:10px 14px 14px;">
+      <button data-action="open-graveyard" style="height:30px;padding:0 10px;border-radius:6px;border:1px solid #e4e4e7;background:#ffffff;color:#09090b;font-size:12px;font-weight:600;cursor:pointer;">Open Graveyard</button>
       <button data-action="dismiss" style="height:30px;padding:0 10px;border-radius:6px;border:1px solid #e4e4e7;background:#ffffff;color:#09090b;font-size:12px;font-weight:600;cursor:pointer;">Dismiss</button>
     </div>
   `;
@@ -110,6 +111,10 @@ function showResurface(tabs: ResurfaceMessage["tabs"]) {
   });
   root.querySelector<HTMLButtonElement>('[data-action="dismiss"]')?.addEventListener("click", () => {
     chrome.runtime.sendMessage({ type: "resurfaceAction", tabIds: ids, action: "dismissed" });
+    root.remove();
+  });
+  root.querySelector<HTMLButtonElement>('[data-action="open-graveyard"]')?.addEventListener("click", () => {
+    chrome.runtime.sendMessage({ type: "openDashboard" });
     root.remove();
   });
   document.documentElement.append(root);
