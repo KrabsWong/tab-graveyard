@@ -143,6 +143,8 @@ const messages = {
     resurface: "Resurface",
     resurfaceDescription: "Show related archived pages while browsing.",
     resurfacePausedDescription: "Recording is paused, so resurfacing suggestions are also paused.",
+    resurfacePausedNotice: "Pause recording is enabled in Privacy & Recording. Resurfacing settings will not take effect until recording is resumed.",
+    resumeRecording: "Resume recording",
     resurfaceFrequency: "Resurface frequency",
     resurfaceCooldown: "Resurface cooldown",
     archiveTrust: "Archive trust stage",
@@ -337,6 +339,8 @@ const messages = {
     resurface: "主动唤醒",
     resurfaceDescription: "浏览时提示相关的历史归档页面。",
     resurfacePausedDescription: "当前已暂停记录，因此主动唤醒也会暂停。",
+    resurfacePausedNotice: "隐私与记录中的暂停记录已开启。在恢复记录前，主动唤醒的所有配置都不会生效。",
+    resumeRecording: "启动记录",
     resurfaceFrequency: "主动唤醒频率",
     resurfaceCooldown: "主动唤醒冷却间隔",
     archiveTrust: "归档信任阶段",
@@ -1150,6 +1154,14 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             />
           </SettingGroup>
           <SettingGroup title={t.resurface}>
+            {snapshot.settings.recordingPaused ? (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/40 p-3 text-sm">
+                <p className="min-w-0 flex-1 text-muted-foreground">{t.resurfacePausedNotice}</p>
+                <Button size="sm" variant="outline" onClick={() => update({ recordingPaused: false })}>
+                  {t.resumeRecording}
+                </Button>
+              </div>
+            ) : null}
             <ToggleRow
               label={t.resurface}
               description={snapshot.settings.recordingPaused ? t.resurfacePausedDescription : t.resurfaceDescription}
