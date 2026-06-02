@@ -23,6 +23,7 @@ const messages = {
     loading: "Loading Tab Graveyard...",
     settings: "Settings",
     back: "Back",
+    settingsGeneralTab: "General",
     settingsPrivacyTab: "Privacy",
     settingsAiTab: "AI",
     settingsRulesTab: "Rules",
@@ -128,11 +129,13 @@ const messages = {
     browserMemoryLocal: "Your browser memory stays local by default.",
     firstRun: "First Run",
     firstRunDescription: "Choose how Tab Graveyard should start building memory.",
+    generalSettings: "General",
+    generalSettingsDescription: "Language, appearance, archive behavior, and resurfacing defaults.",
     importHistory: "Import history",
     useDemo: "Use demo",
     startEmpty: "Start empty",
     privacyRecording: "Privacy & Recording",
-    privacyDescription: "AI enhancement mode and local recording controls.",
+    privacyDescription: "Local recording controls and privacy boundaries.",
     pauseRecording: "Pause recording",
     pauseRecordingDescription: "New tabs will not be added to Tab Memory.",
     strictPrivacy: "Strict privacy mode",
@@ -201,6 +204,7 @@ const messages = {
     loading: "正在加载 Tab Graveyard...",
     settings: "设置",
     back: "返回",
+    settingsGeneralTab: "通用",
     settingsPrivacyTab: "隐私",
     settingsAiTab: "AI",
     settingsRulesTab: "规则",
@@ -306,11 +310,13 @@ const messages = {
     browserMemoryLocal: "你的浏览记忆默认只保存在本地。",
     firstRun: "首次启动",
     firstRunDescription: "选择 Tab Graveyard 如何开始建立记忆。",
+    generalSettings: "通用设置",
+    generalSettingsDescription: "界面语言、主题外观、归档行为和主动唤醒默认值。",
     importHistory: "导入历史",
     useDemo: "使用示例",
     startEmpty: "从零开始",
     privacyRecording: "隐私与记录",
-    privacyDescription: "AI 增强模式与本地记录控制。",
+    privacyDescription: "本地记录控制与隐私边界。",
     pauseRecording: "暂停记录",
     pauseRecordingDescription: "新的标签不会加入 Tab Memory。",
     strictPrivacy: "严格隐私模式",
@@ -1012,7 +1018,7 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
   const [deepSeekStatus, setDeepSeekStatus] = useState<string | null>(null);
   const [deepSeekTesting, setDeepSeekTesting] = useState(false);
   const [deepSeekEnhancing, setDeepSeekEnhancing] = useState(false);
-  const [settingsTab, setSettingsTab] = useState("privacy");
+  const [settingsTab, setSettingsTab] = useState("general");
 
   const update = async (settings: Partial<SettingsType>) => {
     await saveSettings(settings);
@@ -1063,22 +1069,19 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
         className="w-full self-start"
       >
         <TabsList className="flex h-auto flex-wrap justify-start">
+          <TabsTrigger value="general">{t.settingsGeneralTab}</TabsTrigger>
           <TabsTrigger value="privacy">{t.settingsPrivacyTab}</TabsTrigger>
           <TabsTrigger value="ai">{t.settingsAiTab}</TabsTrigger>
           <TabsTrigger value="rules">{t.settingsRulesTab}</TabsTrigger>
           <TabsTrigger value="data">{t.settingsDataTab}</TabsTrigger>
         </TabsList>
-        <TabsContent value="privacy" className="mt-4 grid items-start gap-5">
+        <TabsContent value="general" className="mt-4 grid items-start gap-5">
       <Card>
         <CardHeader>
-          <CardTitle>{t.privacyRecording}</CardTitle>
-          <CardDescription>{t.privacyDescription}</CardDescription>
+          <CardTitle>{t.generalSettings}</CardTitle>
+          <CardDescription>{t.generalSettingsDescription}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
-          <ToggleRow label={t.pauseRecording} description={t.pauseRecordingDescription} checked={snapshot.settings.recordingPaused} onChange={(recordingPaused) => update({ recordingPaused })} />
-          <ToggleRow label={t.strictPrivacy} description={t.strictPrivacyDescription} checked={snapshot.settings.strictPrivacy} onChange={(strictPrivacy) => update({ strictPrivacy, aiMode: strictPrivacy ? "local-only" : snapshot.settings.aiMode })} />
-          <ToggleRow label={t.resurface} description={t.resurfaceDescription} checked={snapshot.settings.resurfaceEnabled} onChange={(resurfaceEnabled) => update({ resurfaceEnabled })} />
-          <ToggleRow label={t.archivePreannounce} description={t.archivePreannounceDescription} checked={snapshot.settings.archivePreannounce} onChange={(archivePreannounce) => update({ archivePreannounce })} />
           <SelectRow
             label={t.language}
             value={snapshot.settings.language}
@@ -1099,7 +1102,6 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             showOptionDescription
             onChange={(theme) => update({ theme: theme as SettingsType["theme"] })}
           />
-          <SelectRow label={t.aiMode} value={snapshot.settings.aiMode} options={enumOptions("aiMode", ["smart", "local-first", "local-only"], language)} description={t.aiModeDescription} showOptionDescription onChange={(aiMode) => update({ aiMode: aiMode as SettingsType["aiMode"], strictPrivacy: aiMode === "local-only" })} />
           <SelectRow label={t.archiveTrust} value={snapshot.settings.archiveTrustStage} options={enumOptions("archiveTrust", ["manual", "preview", "auto"], language)} description={t.archiveTrustDescription} showOptionDescription onChange={(archiveTrustStage) => update({ archiveTrustStage: archiveTrustStage as SettingsType["archiveTrustStage"] })} />
           <SelectRow
             label={t.ghostThreshold}
@@ -1117,6 +1119,21 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             showOptionDescription
             onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, maxPerDay: Number(value) } })}
           />
+          <ToggleRow label={t.resurface} description={t.resurfaceDescription} checked={snapshot.settings.resurfaceEnabled} onChange={(resurfaceEnabled) => update({ resurfaceEnabled })} />
+          <ToggleRow label={t.archivePreannounce} description={t.archivePreannounceDescription} checked={snapshot.settings.archivePreannounce} onChange={(archivePreannounce) => update({ archivePreannounce })} />
+        </CardContent>
+      </Card>
+        </TabsContent>
+
+        <TabsContent value="privacy" className="mt-4 grid items-start gap-5">
+      <Card>
+        <CardHeader>
+          <CardTitle>{t.privacyRecording}</CardTitle>
+          <CardDescription>{t.privacyDescription}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <ToggleRow label={t.pauseRecording} description={t.pauseRecordingDescription} checked={snapshot.settings.recordingPaused} onChange={(recordingPaused) => update({ recordingPaused })} />
+          <ToggleRow label={t.strictPrivacy} description={t.strictPrivacyDescription} checked={snapshot.settings.strictPrivacy} onChange={(strictPrivacy) => update({ strictPrivacy, aiMode: strictPrivacy ? "local-only" : snapshot.settings.aiMode })} />
         </CardContent>
       </Card>
 
@@ -1140,6 +1157,14 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
           <CardDescription>{t.deepSeekDescription}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">
+          <SelectRow
+            label={t.aiMode}
+            value={snapshot.settings.aiMode}
+            options={enumOptions("aiMode", ["smart", "local-first", "local-only"], language)}
+            description={t.aiModeDescription}
+            showOptionDescription
+            onChange={(aiMode) => update({ aiMode: aiMode as SettingsType["aiMode"], strictPrivacy: aiMode === "local-only" })}
+          />
           <ToggleRow
             label={t.deepSeekEnabled}
             description={t.deepSeekEnabledDescription}
