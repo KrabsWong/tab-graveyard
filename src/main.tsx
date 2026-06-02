@@ -137,12 +137,14 @@ const messages = {
     privacyRecording: "Privacy & Recording",
     privacyDescription: "Local recording controls and privacy boundaries.",
     pauseRecording: "Pause recording",
-    pauseRecordingDescription: "New tabs will not be added to Tab Memory.",
+    pauseRecordingDescription: "New tabs will not be added to Tab Memory, and resurfacing suggestions will not be shown.",
     strictPrivacy: "Strict privacy mode",
     strictPrivacyDescription: "Recall uses only local URL, title, time, source and behavior signals.",
     resurface: "Resurface",
     resurfaceDescription: "Show related archived pages while browsing.",
+    resurfacePausedDescription: "Recording is paused, so resurfacing suggestions are also paused.",
     resurfaceFrequency: "Resurface frequency",
+    resurfaceCooldown: "Resurface cooldown",
     archiveTrust: "Archive trust stage",
     archivePreannounce: "Preannounce archive",
     archivePreannounceDescription: "Only applies when the archive trust stage is Auto. Creates an in-app pending archive preview with the Ghost Tabs that would be archived, then waits for confirmation.",
@@ -182,6 +184,8 @@ const messages = {
     archiveTrustDescription: "Main archive policy for Ghost Tabs: manual click, preview first, or automatic archive.",
     resurfaceFrequencyDescription: "Maximum number of archived-memory suggestions Tab Graveyard may show per day.",
     resurfaceFrequencyOption: "At most {count} resurfacing suggestions per day.",
+    resurfaceCooldownDescription: "Minimum time between two resurfacing suggestions, even when more related archives match.",
+    resurfaceCooldownOption: "Wait at least {hours} hours before showing another resurfacing suggestion.",
     domainBlacklist: "Domain Blacklist",
     blacklistDescription: "One domain, keyword, or wildcard per line. Example: *.abc.com blocks abc.com and all subdomains.",
     saveBlacklist: "Save blacklist",
@@ -327,12 +331,14 @@ const messages = {
     privacyRecording: "隐私与记录",
     privacyDescription: "本地记录控制与隐私边界。",
     pauseRecording: "暂停记录",
-    pauseRecordingDescription: "新的标签不会加入 Tab Memory。",
+    pauseRecordingDescription: "新的标签不会加入 Tab Memory，也不会展示主动唤醒提示。",
     strictPrivacy: "严格隐私模式",
     strictPrivacyDescription: "找回仅使用本地 URL、标题、时间、来源和行为信号。",
     resurface: "主动唤醒",
     resurfaceDescription: "浏览时提示相关的历史归档页面。",
+    resurfacePausedDescription: "当前已暂停记录，因此主动唤醒也会暂停。",
     resurfaceFrequency: "主动唤醒频率",
+    resurfaceCooldown: "主动唤醒冷却间隔",
     archiveTrust: "归档信任阶段",
     archivePreannounce: "归档前预告",
     archivePreannounceDescription: "仅当归档信任阶段为自动时生效。自动归档前，会在应用内生成一条待确认的归档预览，列出将被归档的幽灵标签，确认后才执行。",
@@ -372,6 +378,8 @@ const messages = {
     archiveTrustDescription: "幽灵标签的主归档策略：手动点击、先预览，或自动归档。",
     resurfaceFrequencyDescription: "每天最多展示多少次归档记忆的主动唤醒提示。",
     resurfaceFrequencyOption: "每天最多展示 {count} 次主动唤醒提示。",
+    resurfaceCooldownDescription: "两次主动唤醒之间至少间隔多久，即使命中了更多相关归档也不会连续弹出。",
+    resurfaceCooldownOption: "至少等待 {hours} 小时后，才会展示下一次主动唤醒提示。",
     domainBlacklist: "域名黑名单",
     blacklistDescription: "每行一个域名、关键词或通配符。例如：*.abc.com 会屏蔽 abc.com 及所有子域名。",
     saveBlacklist: "保存黑名单",
@@ -1142,14 +1150,30 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             />
           </SettingGroup>
           <SettingGroup title={t.resurface}>
-            <ToggleRow label={t.resurface} description={t.resurfaceDescription} checked={snapshot.settings.resurfaceEnabled} onChange={(resurfaceEnabled) => update({ resurfaceEnabled })} />
+            <ToggleRow
+              label={t.resurface}
+              description={snapshot.settings.recordingPaused ? t.resurfacePausedDescription : t.resurfaceDescription}
+              checked={snapshot.settings.resurfaceEnabled}
+              disabled={snapshot.settings.recordingPaused}
+              onChange={(resurfaceEnabled) => update({ resurfaceEnabled })}
+            />
             <SelectRow
               label={t.resurfaceFrequency}
               value={String(snapshot.settings.resurfaceRule.maxPerDay)}
               options={["1", "3", "5"].map((count) => ({ value: count, label: count, description: interpolate(t.resurfaceFrequencyOption, { count }) }))}
               description={t.resurfaceFrequencyDescription}
+              disabled={snapshot.settings.recordingPaused}
               showOptionDescription
               onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, maxPerDay: Number(value) } })}
+            />
+            <SelectRow
+              label={t.resurfaceCooldown}
+              value={String(snapshot.settings.resurfaceRule.cooldownHours)}
+              options={["1", "3", "6", "12", "24"].map((hours) => ({ value: hours, label: `${hours}h`, description: interpolate(t.resurfaceCooldownOption, { hours }) }))}
+              description={t.resurfaceCooldownDescription}
+              disabled={snapshot.settings.recordingPaused}
+              showOptionDescription
+              onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, cooldownHours: Number(value) } })}
             />
           </SettingGroup>
         </CardContent>
@@ -1772,6 +1796,7 @@ function SelectRow({
   value,
   options,
   description,
+  disabled,
   showOptionDescription,
   onChange
 }: {
@@ -1779,15 +1804,16 @@ function SelectRow({
   value: string;
   options: Array<string | { value: string; label: string; description?: string }>;
   description?: string;
+  disabled?: boolean;
   showOptionDescription?: boolean;
   onChange: (value: string) => void;
 }) {
   const normalizedOptions = options.map((option) => (typeof option === "string" ? { value: option, label: option } : option));
   const selectedOption = normalizedOptions.find((option) => option.value === value);
   return (
-    <label className="grid gap-1 text-sm">
+    <label className={`grid gap-1 text-sm ${disabled ? "opacity-60" : ""}`}>
       <SettingLabel label={label} description={description} />
-      <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring" value={value} onChange={(event) => onChange(event.target.value)}>
+      <select className="h-9 rounded-md border bg-background px-2 text-sm outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
         {normalizedOptions.map((item) => {
           return <option key={item.value} value={item.value}>{item.label}</option>;
         })}
