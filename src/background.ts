@@ -10,8 +10,10 @@ import {
   ensureSessions,
   getDomain,
   getState,
+  getVisibleTabs,
   isBlacklisted,
   isGhostTab,
+  isVisibleTab,
   matchesOriginalQuery,
   mergeTab,
   normalizeState,
@@ -79,7 +81,7 @@ chrome.commands.onCommand.addListener((command) => {
 
 chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
   const state = await getState();
-  const results = recallTabs(state.tabs, text, { archivedOnly: true }).slice(0, 5);
+  const results = recallTabs(getVisibleTabs(state.tabs, state.settings), text, { archivedOnly: true }).slice(0, 5);
   suggest(
     results.map((tab) => ({
       content: tab.id,
@@ -90,8 +92,9 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
 
 chrome.omnibox.onInputEntered.addListener(async (text) => {
   const state = await getState();
-  const direct = state.tabs.find((tab) => tab.id === text);
-  const result = direct ?? recallTabs(state.tabs, text, { archivedOnly: true })[0];
+  const tabs = getVisibleTabs(state.tabs, state.settings);
+  const direct = tabs.find((tab) => tab.id === text);
+  const result = direct ?? recallTabs(tabs, text, { archivedOnly: true })[0];
   if (result) {
     await restoreTab(result.id);
   } else {
@@ -193,7 +196,9 @@ async function mutate(updater: (state: GraveyardState) => GraveyardState) {
 async function recordOpenTabs() {
   const tabs = await chrome.tabs.query({});
   let state = await getState();
+  if (state.settings.recordingPaused) return;
   for (const tab of tabs) {
+    if (!tab.url || tab.incognito || isBlacklisted(getDomain(tab.url), state.settings.blacklistDomains)) continue;
     const memory = buildMemoryFromTab(tab, state);
     if (memory) state = mergeTab(state, memory);
   }
@@ -214,7 +219,7 @@ async function flushActiveTime() {
     state = {
       ...state,
       tabs: state.tabs.map((item) =>
-        item.tabId === tab.id && !item.archived
+        item.tabId === tab.id && !item.archived && isVisibleTab(item, state.settings)
           ? { ...item, signals: { ...item.signals, activeMs: item.signals.activeMs + delta } }
           : item
       )
@@ -479,6 +484,7 @@ async function restoreTab(tabId: string, inWindow = false) {
   const state = await getState();
   const tab = state.tabs.find((item) => item.id === tabId);
   if (!tab) return;
+  if (!isVisibleTab(tab, state.settings)) return;
   const now = Date.now();
   let created: chrome.tabs.Tab | chrome.windows.Window;
   if (!inWindow && typeof tab.tabId === "number") {
@@ -522,6 +528,7 @@ async function recordContentSignal(tabId: number | undefined, url: string, signa
   const state = await getState();
   const now = Date.now();
   const domain = getDomain(url);
+  if (isBlacklisted(domain, state.settings.blacklistDomains)) return createSnapshot(state);
   const next = addEvent(
     {
       ...state,
@@ -566,7 +573,8 @@ async function recordResurfaceAction(tabIds: string[], action: "shown" | "dismis
 async function recordCopiedUrl(url: string) {
   const state = await getState();
   const domain = getDomain(url);
-  const related = state.tabs.filter((tab) => tab.archived && tab.domain === domain).slice(0, 4);
+  if (isBlacklisted(domain, state.settings.blacklistDomains)) return createSnapshot(state);
+  const related = getVisibleTabs(state.tabs, state.settings).filter((tab) => tab.archived && tab.domain === domain).slice(0, 4);
   const next = addEvent(state, "url_copied", { domain, url, related: related.length });
   await setState(next);
   if (related.length) await openDashboard();
@@ -575,7 +583,7 @@ async function recordCopiedUrl(url: string) {
 
 async function restoreSession(sessionId: string) {
   const state = await getState();
-  const tabs = state.tabs.filter((tab) => tab.sessionId === sessionId);
+  const tabs = getVisibleTabs(state.tabs, state.settings).filter((tab) => tab.sessionId === sessionId);
   if (!tabs.length) return;
   const win = await chrome.windows.create({ url: tabs.map((tab) => tab.url), focused: true });
   const createdTabs = win.tabs ?? [];
@@ -651,6 +659,11 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
   }
   const url = tab.url;
   const state = await getState();
+  const currentDomain = getDomain(url);
+  if (isBlacklisted(currentDomain, state.settings.blacklistDomains)) {
+    logResurface("skip:blacklisted", { tabId: tab.id, url });
+    return;
+  }
   logResurface("evaluate", {
     tabId: tab.id,
     url,
@@ -688,13 +701,14 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
   const includeGhostTabs = state.settings.resurfaceRule.includeGhostTabs;
   const now = Date.now();
   const scored = state.tabs
+    .filter((item) => isVisibleTab(item, state.settings))
     .filter((item) => item.url !== url && (item.archived || (includeGhostTabs && isGhostTab(item, state.settings, now))))
     .map((item) => ({
       item,
-      overlap: item.card.topics.filter((topic) => current.topics.includes(topic)).length + (item.domain === getDomain(url) ? 2 : 0)
+      overlap: item.card.topics.filter((topic) => current.topics.includes(topic)).length + (item.domain === currentDomain ? 2 : 0)
     }));
   logResurface("matched-candidates", {
-    currentDomain: getDomain(url),
+    currentDomain,
     currentTopics: current.topics,
     includeGhostTabs,
     candidates: scored
@@ -790,20 +804,21 @@ async function testDeepSeek() {
 
 async function recallWithDeepSeek(query: string, filters?: RecallFilters) {
   const state = await getState();
+  const tabs = getVisibleTabs(state.tabs, state.settings);
   if (!query.trim() || !canUseDeepSeek(state)) {
-    return recallTabs(state.tabs, query, filters);
+    return recallTabs(tabs, query, filters);
   }
 
   try {
     const expansion = await expandRecallQuery(state, query);
     const expandedQuery = [query, ...expansion.terms, ...expansion.bilingualTerms].join(" ");
-    return recallTabs(state.tabs, expandedQuery, {
+    return recallTabs(tabs, expandedQuery, {
       ...filters,
       source: filters?.source && filters.source !== "all" ? filters.source : expansion.source ?? filters?.source,
       contentType: filters?.contentType && filters.contentType !== "all" ? filters.contentType : expansion.contentType ?? filters?.contentType
     }).filter((result) => matchesOriginalQuery(result, query));
   } catch {
-    return recallTabs(state.tabs, query, filters);
+    return recallTabs(tabs, query, filters);
   }
 }
 
@@ -817,6 +832,7 @@ async function enhanceWithDeepSeek() {
   for (let index = 0; index < tabs.length; index += 1) {
     if (enhancedTabs >= 20) break;
     const tab = tabs[index];
+    if (!isVisibleTab(tab, state.settings)) continue;
     if (tab.card.aiEnhanced) continue;
     try {
       tabs[index] = { ...tab, card: await enhanceInfoCard(state, tab) };
@@ -833,7 +849,7 @@ async function enhanceWithDeepSeek() {
     if (renamedSessions >= 10) break;
     const session = sessions[index];
     if (session.aiNamed) continue;
-    const sessionTabs = state.tabs.filter((tab) => session.tabIds.includes(tab.id)).slice(0, 12);
+    const sessionTabs = state.tabs.filter((tab) => session.tabIds.includes(tab.id) && isVisibleTab(tab, state.settings)).slice(0, 12);
     if (sessionTabs.length < 2) continue;
     try {
       const name = await suggestSessionName(state, sessionTabs);

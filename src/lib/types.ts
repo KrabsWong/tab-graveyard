@@ -111,7 +111,6 @@ export type Settings = {
   deepSeek: DeepSeekSettings;
   strictPrivacy: boolean;
   ghostThresholdHours: number;
-  newTabEnabled: boolean;
   resurfaceEnabled: boolean;
   resurfaceRule: ResurfaceRule;
   archiveTrustStage: ArchiveTrustStage;

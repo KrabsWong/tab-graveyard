@@ -151,7 +151,9 @@ const messages = {
     resurfaceIncludeGhostsDescription: "Also match long-inactive tabs that are still open. Opening one will focus the existing tab when possible.",
     resurfaceFrequency: "Resurface frequency",
     resurfaceCooldown: "Resurface cooldown",
+    resurfacePolicy: "Resurface Policy",
     archiveTrust: "Archive trust stage",
+    archivePolicy: "Archive Policy",
     archivePreannounce: "Preannounce archive",
     archivePreannounceDescription: "Only applies when the archive trust stage is Auto. Creates an in-app pending archive preview with the Ghost Tabs that would be archived, then waits for confirmation.",
     language: "Language",
@@ -354,7 +356,9 @@ const messages = {
     resurfaceIncludeGhostsDescription: "主动唤醒时也匹配仍打开但长时间未活跃的幽灵标签。打开时会尽量切换到原标签页。",
     resurfaceFrequency: "主动唤醒频率",
     resurfaceCooldown: "主动唤醒冷却间隔",
+    resurfacePolicy: "唤醒策略",
     archiveTrust: "归档信任阶段",
+    archivePolicy: "归档策略",
     archivePreannounce: "归档前预告",
     archivePreannounceDescription: "仅当归档信任阶段为自动时生效。自动归档前，会在应用内生成一条待确认的归档预览，列出将被归档的幽灵标签，确认后才执行。",
     language: "界面语言",
@@ -1063,7 +1067,7 @@ function GraveyardBrowser({ tabs, refresh }: { tabs: TabMemory[]; refresh: () =>
 }
 
 function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapshot: AppSnapshot; sessions: AppSnapshot["sessions"]; visibleTabIds?: Set<string>; refresh: () => Promise<void> }) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const [expanded, setExpanded] = useState<string[]>([]);
   const toggleExpanded = (id: string) => setExpanded((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   return (
@@ -1076,7 +1080,9 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
         <div key={session.id} className="border-b last:border-b-0">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
             <button className="min-w-0 flex-1 text-left" onClick={() => toggleExpanded(session.id)}>
-              <span className="block truncate text-sm font-medium">{session.name}</span>
+              <span className="block truncate text-sm font-medium">
+                {formatSessionTimeRange(session.createdAt, session.updatedAt, language)} · {session.name}
+              </span>
               <span className="block truncate text-xs text-muted-foreground">
                 {t.tabLabels} {session.topics.join(", ") || t.continueMetric}
               </span>
@@ -1098,6 +1104,31 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
       })}
     </div>
   );
+}
+
+function formatSessionTimeRange(createdAt: number, updatedAt: number, language: UiLanguage) {
+  const start = new Date(createdAt);
+  const end = new Date(updatedAt);
+  const sameDay = start.toDateString() === end.toDateString();
+  if (sameDay) return `${formatDate(start)} ${formatClock(start)}-${formatClock(end)}`;
+  return `${formatDate(start)} ${formatClock(start)} - ${formatDate(end)} ${formatClock(end)}`;
+}
+
+function formatAbsoluteDateTime(timestamp: number) {
+  const date = new Date(timestamp);
+  return `${formatDate(date)} ${formatClock(date)}`;
+}
+
+function formatDate(date: Date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+function formatClock(date: Date) {
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
 }
 
 function Facets({ snapshot, filters, setFilters }: { snapshot: AppSnapshot; filters: RecallFilters; setFilters: React.Dispatch<React.SetStateAction<RecallFilters>> }) {
@@ -1245,7 +1276,7 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             showOptionDescription
             onChange={(value) => update({ ghostThresholdHours: Number(value) })}
           />
-          <SettingGroup title={t.archiveTrust}>
+          <SettingSection title={t.archivePolicy}>
             <SelectRow label={t.archiveTrust} value={snapshot.settings.archiveTrustStage} options={enumOptions("archiveTrust", ["manual", "preview", "auto"], language)} description={t.archiveTrustDescription} showOptionDescription onChange={(archiveTrustStage) => update({ archiveTrustStage: archiveTrustStage as SettingsType["archiveTrustStage"] })} />
             <ToggleRow
               label={t.archivePreannounce}
@@ -1254,8 +1285,8 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
               disabled={snapshot.settings.archiveTrustStage !== "auto"}
               onChange={(archivePreannounce) => update({ archivePreannounce })}
             />
-          </SettingGroup>
-          <SettingGroup title={t.resurface}>
+          </SettingSection>
+          <SettingSection title={t.resurfacePolicy}>
             {snapshot.settings.recordingPaused ? (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/40 p-3 text-sm">
                 <p className="min-w-0 flex-1 text-muted-foreground">{t.resurfacePausedNotice}</p>
@@ -1307,7 +1338,7 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
               showOptionDescription
               onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, cooldownHours: Number(value) } })}
             />
-          </SettingGroup>
+          </SettingSection>
         </CardContent>
       </Card>
         </TabsContent>
@@ -1639,9 +1670,9 @@ function TabListRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemory | 
       </div>
       <div className="min-w-0 text-xs leading-5 text-muted-foreground">
         <div className="truncate">
-          <span>{t.lastActive}: <span className="font-medium text-foreground">{formatTime(tab.lastActivatedAt, Date.now(), language)}</span></span>
+          <span>{t.lastActive}: <span className="font-medium text-foreground">{formatAbsoluteDateTime(tab.lastActivatedAt)}</span></span>
           <span className="mx-2 text-border">|</span>
-          <span>{t.opened}: <span className="font-medium text-foreground">{formatTime(tab.openedAt, Date.now(), language)}</span></span>
+          <span>{t.opened}: <span className="font-medium text-foreground">{formatAbsoluteDateTime(tab.openedAt)}</span></span>
           <span className="mx-2 text-border">|</span>
           <span title={source.description}>{t.source}: <span className="font-medium text-foreground">{source.label}</span></span>
           <span className="mx-2 text-border">|</span>
@@ -2031,11 +2062,11 @@ function SettingLabel({ label, description }: { label: string; description?: str
   );
 }
 
-function SettingGroup({ title, children }: { title: string; children: React.ReactNode }) {
+function SettingSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="grid gap-4 rounded-md border p-4">
+    <section className="grid gap-5">
       <h3 className="text-sm font-semibold">{title}</h3>
-      <div className="grid gap-5">{children}</div>
+      <div className="grid gap-5 rounded-md border p-4">{children}</div>
     </section>
   );
 }

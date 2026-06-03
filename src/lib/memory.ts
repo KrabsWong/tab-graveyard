@@ -31,7 +31,6 @@ export const defaultSettings: Settings = {
   },
   strictPrivacy: true,
   ghostThresholdHours: 48,
-  newTabEnabled: true,
   resurfaceEnabled: true,
   resurfaceRule: {
     maxPerDay: 3,
@@ -105,22 +104,27 @@ export function normalizeState(raw: unknown): GraveyardState {
 }
 
 export function createSnapshot(state: GraveyardState, now = Date.now()): AppSnapshot {
-  const ghostTabs = state.tabs.filter((tab) => isGhostTab(tab, state.settings, now));
-  const archivedTabs = state.tabs.filter((tab) => tab.archived);
+  const tabs = getVisibleTabs(state.tabs, state.settings);
+  const visibleTabIds = new Set(tabs.map((tab) => tab.id));
+  const sessions = state.sessions
+    .map((session) => ({ ...session, tabIds: session.tabIds.filter((tabId) => visibleTabIds.has(tabId)) }))
+    .filter((session) => session.tabIds.length > 0);
+  const ghostTabs = tabs.filter((tab) => isGhostTab(tab, state.settings, now));
+  const archivedTabs = tabs.filter((tab) => tab.archived);
   const todayStart = startOfDay(now);
   const yesterdayStart = todayStart - 24 * 60 * 60 * 1000;
-  const todayCount = state.tabs.filter((tab) => tab.openedAt >= todayStart).length;
-  const yesterdayTabs = state.tabs.filter((tab) => tab.openedAt >= yesterdayStart && tab.openedAt < todayStart);
+  const todayCount = tabs.filter((tab) => tab.openedAt >= todayStart).length;
+  const yesterdayTabs = tabs.filter((tab) => tab.openedAt >= yesterdayStart && tab.openedAt < todayStart);
   const recapTitle = yesterdayTabs
     .sort((a, b) => importanceWeight(b.card.importance) - importanceWeight(a.card.importance))[0]?.title;
 
   return {
-    tabs: state.tabs,
-    sessions: state.sessions,
+    tabs,
+    sessions,
     settings: state.settings,
     ghostTabs,
     archivedTabs,
-    totalTabs: state.tabs.length,
+    totalTabs: tabs.length,
     todayCount,
     yesterdayCount: yesterdayTabs.length,
     recapTitle: recapTitle ?? "No standout tab yet",
@@ -204,6 +208,14 @@ export function isGhostTab(tab: TabMemory, settings: Settings, now = Date.now())
   if (tab.card.importance === "must" || tab.card.importance === "should") return false;
   if (isBlacklisted(tab.domain, settings.blacklistDomains)) return false;
   return now - tab.lastActivatedAt >= settings.ghostThresholdHours * 60 * 60 * 1000;
+}
+
+export function isVisibleTab(tab: TabMemory, settings: Settings) {
+  return !isBlacklisted(tab.domain, settings.blacklistDomains);
+}
+
+export function getVisibleTabs(tabs: TabMemory[], settings: Settings) {
+  return tabs.filter((tab) => isVisibleTab(tab, settings));
 }
 
 export function recallTabs(tabs: TabMemory[], query: string, filters: RecallFilters = {}, now = Date.now()): RecallResult[] {
@@ -619,9 +631,8 @@ function extractSearchTerms(text: string) {
 }
 
 function buildSessionName(tab: TabMemory, sourceHint: string) {
-  const date = new Date(tab.openedAt).toLocaleDateString([], { weekday: "short" });
   const topic = tab.card.topics[0] ?? "browsing";
-  return `${date} · ${topic} · mostly ${sourceHint}`;
+  return `${topic} · mostly ${sourceHint}`;
 }
 
 function createSessionId(now: number, windowId?: number) {
