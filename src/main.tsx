@@ -117,6 +117,7 @@ const messages = {
     activeSessions: "Active Sessions",
     sessionsDescription: "Conservative task groups based on topic, entity, source, and time proximity.",
     tabs: "tabs",
+    links: "links",
     tabLabels: "Tags:",
     sessionSource: "Mostly:",
     sessionTime: "Time:",
@@ -382,6 +383,7 @@ const messages = {
     activeSessions: "活跃会话",
     sessionsDescription: "基于主题、实体、来源和时间接近度的保守任务分组。",
     tabs: "个标签",
+    links: "个链接",
     tabLabels: "标签：",
     sessionSource: "主要来源：",
     sessionTime: "时间：",
@@ -1312,7 +1314,7 @@ function RecallSummaryCard({ synthesis }: { synthesis: RecallSynthesisResult }) 
           <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
           {t.summaryReady}
         </span>
-        <span>{synthesis.tabCount} {t.tabs}</span>
+        <span>{synthesis.tabCount} {t.links}</span>
         {synthesis.topics.length ? (
           <span className="truncate">{synthesis.topics.join(", ")}</span>
         ) : null}
