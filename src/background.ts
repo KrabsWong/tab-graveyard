@@ -19,7 +19,7 @@ import {
   recallTabs,
   setState
 } from "@/lib/memory";
-import type { ContentType, ExtensionRequest, ExtensionResponse, GraveyardState, Importance, ReadingStatus, RecallCue, RecallFilters, RecallResult, RecallSynthesisResult, SourceType, TabInfoCard, TabMemory } from "@/lib/types";
+import type { ContentType, ExtensionRequest, ExtensionResponse, GraveyardState, Importance, QuickRecallItem, ReadingStatus, RecallCue, RecallFilters, RecallResult, RecallSynthesisResult, SourceType, TabInfoCard, TabMemory } from "@/lib/types";
 
 const UNDO_MS = 5_000;
 const activeStartedByTabId = new Map<number, number>();
@@ -76,6 +76,7 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 chrome.commands.onCommand.addListener((command) => {
   if (command === "open-graveyard") void openDashboard();
+  if (command === "toggle-command-palette") void toggleCommandPalette();
 });
 
 chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
@@ -100,6 +101,31 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
     await openDashboard();
   }
 });
+
+async function toggleCommandPalette() {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) {
+    await openDashboard();
+    return;
+  }
+  const state = await getState();
+  const message = {
+    type: "TAB_GRAVEYARD_TOGGLE_COMMAND_PALETTE",
+    language: resolveUiLanguage(state.settings.language),
+    theme: state.settings.theme,
+    aiAvailable: canUseDeepSeek(state)
+  };
+  try {
+    await chrome.tabs.sendMessage(tab.id, message);
+  } catch {
+    try {
+      await injectContentScript(tab.id);
+      await chrome.tabs.sendMessage(tab.id, message);
+    } catch {
+      await openDashboard();
+    }
+  }
+}
 
 chrome.runtime.onMessage.addListener((request: ExtensionRequest, _sender, sendResponse) => {
   void handleMessage(request)
@@ -147,6 +173,12 @@ async function handleMessage(request: ExtensionRequest) {
       return recordCopiedUrl(request.url);
     case "recall":
       return recallWithDeepSeek(request.query, request.filters);
+    case "quickRecall":
+      return quickRecall(request.query);
+    case "commandPaletteContext": {
+      const state = await getState();
+      return { language: resolveUiLanguage(state.settings.language), theme: state.settings.theme, aiAvailable: canUseDeepSeek(state) };
+    }
     case "summarizeRecall":
       return summarizeRecallWithDeepSeek(request.query, request.tabIds, request.sessionId);
     case "saveSettings":
@@ -841,8 +873,57 @@ async function recallWithDeepSeek(query: string, filters?: RecallFilters) {
   }
 }
 
+async function quickRecall(query: string): Promise<QuickRecallItem[]> {
+  const state = ensureSessions(await getState());
+  const now = Date.now();
+  const tabs = getVisibleTabs(state.tabs, state.settings);
+  const normalizedQuery = query.trim().toLowerCase();
+  const matchedTabs = normalizedQuery
+    ? recallTabs(tabs, query, {}).slice(0, 10)
+    : tabs
+        .slice()
+        .sort((a, b) => b.lastActivatedAt - a.lastActivatedAt)
+        .slice(0, 10)
+        .map((tab) => ({ ...tab, score: 0, matchedCues: [], sourceBreakdown: {} }));
+  const items = new Map<string, QuickRecallItem>();
+  for (const tab of matchedTabs) {
+    items.set(tab.id, quickRecallItemFromTab(tab, state, now, tab.matchedCues?.[0]));
+  }
+
+  if (normalizedQuery) {
+    const matchedSessions = state.sessions
+      .filter((session) => [session.name, session.topics.join(" "), session.sourceHint].join(" ").toLowerCase().includes(normalizedQuery))
+      .slice(0, 3);
+    for (const session of matchedSessions) {
+      const sessionTabs = tabs
+        .filter((tab) => session.tabIds.includes(tab.id))
+        .sort((a, b) => b.lastActivatedAt - a.lastActivatedAt)
+        .slice(0, 3);
+      for (const tab of sessionTabs) {
+        if (!items.has(tab.id)) items.set(tab.id, quickRecallItemFromTab(tab, state, now, session.name, "session"));
+      }
+    }
+  }
+
+  return Array.from(items.values()).slice(0, 10);
+}
+
+function quickRecallItemFromTab(tab: TabMemory, state: GraveyardState, now: number, reason?: string, category?: QuickRecallItem["category"]): QuickRecallItem {
+  const resolvedCategory = category ?? (tab.archived ? "archived" : isGhostTab(tab, state.settings, now) ? "ghost" : "active");
+  const fallbackReason = tab.archived ? "Archived memory" : resolvedCategory === "ghost" ? "Ghost tab" : "Active tab";
+  return {
+    id: tab.id,
+    title: tab.card.summary || tab.title || tab.domain,
+    url: tab.url,
+    domain: tab.domain,
+    favIconUrl: tab.favIconUrl,
+    category: resolvedCategory,
+    reason: reason || fallbackReason
+  };
+}
+
 async function summarizeRecallWithDeepSeek(query: string, tabIds?: string[], sessionId?: string): Promise<RecallSynthesisResult> {
-  const state = await getState();
+  const state = ensureSessions(await getState());
   if (!canUseDeepSeek(state)) throw new Error("DeepSeek is disabled by AI mode or strict privacy mode.");
   const language = resolveUiLanguage(state.settings.language);
   const outputLanguage = language === "zh"
@@ -875,6 +956,7 @@ Language requirement is strict: summary, bullets, gaps, and topics must use the 
     700
   );
 
+  const sourceHash = sessionId ? buildSessionSummarySourceHash(tabs) : undefined;
   const result = {
     summary: stringOr(payload.summary, ""),
     bullets: cleanStringArray(payload.bullets).slice(0, 5),
@@ -883,8 +965,62 @@ Language requirement is strict: summary, bullets, gaps, and topics must use the 
     tabCount: tabs.length,
     generatedAt: Date.now()
   };
-  await setState(addEvent(state, "deepseek_recall_summarized", { tabs: tabs.length, session: sessionId ?? "", query: query.slice(0, 80) }));
+  const summarizedState = sessionId && sourceHash
+    ? ensureSessions({
+        ...state,
+        sessions: state.sessions.some((session) => session.id === sessionId)
+          ? state.sessions.map((session) => (
+              session.id === sessionId
+                ? { ...session, aiSummary: result, aiSummarySourceHash: sourceHash }
+                : session
+            ))
+          : [
+              ...state.sessions,
+              {
+                id: sessionId,
+                name: query || sessionId,
+                createdAt: Math.min(...tabs.map((tab) => tab.openedAt)),
+                updatedAt: Math.max(...tabs.map((tab) => tab.lastActivatedAt)),
+                tabIds: tabs.map((tab) => tab.id),
+                topics: Array.from(new Set(tabs.flatMap((tab) => tab.card.topics))).slice(0, 4),
+                sourceHint: tabs[0]?.card.source ?? "direct",
+                aiSummary: result,
+                aiSummarySourceHash: sourceHash
+              }
+            ]
+      })
+    : state;
+  await setState(addEvent(summarizedState, "deepseek_recall_summarized", { tabs: tabs.length, session: sessionId ?? "", query: query.slice(0, 80) }));
   return result;
+}
+
+function buildSessionSummarySourceHash(tabs: TabMemory[]) {
+  const input = [...tabs]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((tab) => [
+      tab.id,
+      tab.url,
+      tab.title,
+      tab.card.summary,
+      tab.card.topics.join(","),
+      tab.card.entities.join(","),
+      tab.card.importance,
+      tab.card.readingStatus,
+      tab.card.contentType,
+      tab.card.source,
+      tab.lastActivatedAt,
+      tab.signals.activeMs,
+      tab.signals.activationCount,
+      tab.signals.maxScrollPercent,
+      tab.signals.copiedTextCount
+    ].join("|"))
+    .join("\n");
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 async function enhanceWithDeepSeek() {

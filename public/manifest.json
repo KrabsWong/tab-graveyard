@@ -46,6 +46,13 @@
         "mac": "Command+Shift+F"
       },
       "description": "Open Tab Graveyard recall"
+    },
+    "toggle-command-palette": {
+      "suggested_key": {
+        "default": "Alt+Shift+K",
+        "mac": "Alt+Shift+K"
+      },
+      "description": "Search Tab Graveyard from the current page"
     }
   }
 }

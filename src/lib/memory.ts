@@ -197,7 +197,9 @@ export function ensureSessions(state: GraveyardState): GraveyardState {
       sourceHint,
       userNamed: saved?.userNamed,
       aiNamed: saved?.aiNamed,
-      aiNamedAt: saved?.aiNamedAt
+      aiNamedAt: saved?.aiNamedAt,
+      aiSummary: saved?.aiSummary,
+      aiSummarySourceHash: saved?.aiSummarySourceHash
     });
   }
   return { ...state, sessions: Array.from(sessionsById.values()).sort((a, b) => b.updatedAt - a.updatedAt) };

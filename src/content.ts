@@ -5,6 +5,23 @@ type ResurfaceMessage = {
   tabs: Array<{ id: string; title: string; domain: string; url: string; favIconUrl?: string; archived?: boolean }>;
 };
 
+type CommandPaletteMessage = {
+  type: "TAB_GRAVEYARD_TOGGLE_COMMAND_PALETTE";
+  language?: "en" | "zh";
+  theme?: "system" | "light" | "dark";
+  aiAvailable?: boolean;
+};
+
+type QuickRecallItem = {
+  id: string;
+  title: string;
+  url: string;
+  domain: string;
+  favIconUrl?: string;
+  category: "active" | "ghost" | "archived" | "session";
+  reason: string;
+};
+
 const tabGraveyardWindow = window as Window & { __tabGraveyardContentLoaded?: boolean };
 
 if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
@@ -12,10 +29,15 @@ if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
   console.info("[Tab Graveyard][content]", "loaded", { url: location.href });
 
   try {
-    chrome.runtime.onMessage.addListener((message: ResurfaceMessage) => {
-      console.info("[Tab Graveyard][content]", "message", { type: message.type, count: message.tabs?.length ?? 0, url: location.href });
-      if (message.type !== "TAB_GRAVEYARD_RESURFACE" || !message.tabs.length) return;
-      showResurface(message.tabs, message.language ?? "en", message.theme ?? "system");
+    chrome.runtime.onMessage.addListener((message: ResurfaceMessage | CommandPaletteMessage) => {
+      console.info("[Tab Graveyard][content]", "message", { type: message.type, count: "tabs" in message ? message.tabs.length : 0, url: location.href });
+      if (message.type === "TAB_GRAVEYARD_RESURFACE" && message.tabs.length) {
+        showResurface(message.tabs, message.language ?? "en", message.theme ?? "system");
+        return;
+      }
+      if (message.type === "TAB_GRAVEYARD_TOGGLE_COMMAND_PALETTE") {
+        toggleCommandPalette(message.language ?? "en", message.theme ?? "system", Boolean(message.aiAvailable));
+      }
     });
   } catch {
     tabGraveyardWindow.__tabGraveyardContentLoaded = false;
@@ -51,6 +73,26 @@ if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
       sendRuntimeMessage({ type: "copyUrlTrigger", url: text });
     }
   });
+
+  document.addEventListener("keydown", (event) => {
+    if (!isCommandPaletteShortcut(event) || isEditableTarget(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    sendRuntimeRequest<{ language: "en" | "zh"; theme: "system" | "light" | "dark"; aiAvailable?: boolean }>({ type: "commandPaletteContext" })
+      .then((context) => toggleCommandPalette(context.language, context.theme, Boolean(context.aiAvailable)))
+      .catch(() => toggleCommandPalette("en", "system", false));
+  }, true);
+}
+
+function isCommandPaletteShortcut(event: KeyboardEvent) {
+  return event.key.toLowerCase() === "k" && event.shiftKey && (event.metaKey || event.ctrlKey);
+}
+
+function isEditableTarget(target: EventTarget | null) {
+  const element = target instanceof Element ? target : null;
+  if (!element) return false;
+  const tagName = element.tagName.toLowerCase();
+  return tagName === "input" || tagName === "textarea" || tagName === "select" || element.closest("[contenteditable='true']");
 }
 
 function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", theme: "system" | "light" | "dark") {
@@ -142,6 +184,154 @@ function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", th
   window.setTimeout(() => root.remove(), 12_000);
 }
 
+function toggleCommandPalette(language: "en" | "zh", theme: "system" | "light" | "dark", aiAvailable: boolean) {
+  const existing = document.getElementById("tab-graveyard-command-palette");
+  if (existing) {
+    existing.remove();
+    return;
+  }
+  showCommandPalette(language, theme, aiAvailable);
+}
+
+function showCommandPalette(language: "en" | "zh", theme: "system" | "light" | "dark", aiAvailable: boolean) {
+  const copy = getCommandPaletteCopy(language);
+  const colors = getThemeColors(theme);
+  const root = document.createElement("div");
+  root.id = "tab-graveyard-command-palette";
+  root.style.cssText = [
+    "position:fixed",
+    "inset:0",
+    "z-index:2147483647",
+    "display:flex",
+    "align-items:flex-start",
+    "justify-content:center",
+    "padding-top:18vh",
+    "background:rgba(9,9,11,.18)"
+  ].join(";");
+
+  const shadow = root.attachShadow({ mode: "open" });
+  shadow.innerHTML = `
+    <style>
+      *{box-sizing:border-box}
+      .panel{width:min(720px,calc(100vw - 32px));border:1px solid ${colors.border};border-radius:10px;background:${colors.background};color:${colors.foreground};box-shadow:${colors.shadow};font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow:hidden}
+      .search{display:flex;align-items:center;gap:10px;border-bottom:1px solid ${colors.border};padding:14px 16px;background:${colors.header}}
+      .icon{width:18px;height:18px;color:${colors.muted};flex:0 0 auto}
+      input{min-width:0;flex:1;border:0;outline:0;background:transparent;color:${colors.foreground};font:500 16px/1.4 inherit}
+      input::placeholder{color:${colors.muted}}
+      .hint{font-size:11px;color:${colors.muted};white-space:nowrap}
+      .mode{padding:9px 16px 0;color:${colors.muted};font-size:12px;line-height:1.45}
+      .status{padding:6px 16px 10px;color:${colors.muted};font-size:12px;border-bottom:1px solid ${colors.border}}
+      .list{display:grid;max-height:380px;overflow:auto;padding:8px}
+      .item{display:grid;grid-template-columns:32px minmax(0,1fr) max-content;gap:10px;align-items:center;width:100%;min-width:0;border:0;border-radius:8px;background:transparent;color:inherit;text-align:left;padding:8px;cursor:pointer;overflow:hidden}
+      .item[aria-selected="true"]{background:${colors.iconBackground}}
+      .avatar{width:32px;height:32px;border-radius:7px;border:1px solid ${colors.border};background:${colors.background};display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:11px;font-weight:700}
+      .avatar img{width:100%;height:100%;object-fit:contain;padding:4px}
+      .content{display:block;min-width:0;overflow:hidden}
+      .title{display:block;max-width:100%;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .meta{margin-top:2px;font-size:11px;color:${colors.muted};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .badge{justify-self:end;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:650;border:1px solid ${colors.border};border-radius:999px;padding:3px 7px;color:${colors.muted};background:${colors.background}}
+      .empty{padding:24px 16px;text-align:center;color:${colors.muted};font-size:13px}
+      .footer{display:flex;justify-content:flex-end;border-top:1px solid ${colors.border};padding:10px 12px;background:${colors.header}}
+      .open{border:1px solid ${colors.border};border-radius:8px;background:${colors.background};color:${colors.foreground};font:650 12px/1.2 inherit;padding:7px 10px;cursor:pointer}
+      .open:hover{background:${colors.iconBackground}}
+    </style>
+    <div class="panel" role="dialog" aria-label="${copy.title}">
+      <div class="search">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>
+        <input autocomplete="off" spellcheck="false" placeholder="${copy.placeholder}" />
+        <span class="hint">${copy.hint}</span>
+      </div>
+      <div class="mode">${aiAvailable ? copy.aiAvailable : copy.aiUnavailable}</div>
+      <div class="status">${copy.ready}</div>
+      <div class="list"></div>
+      <div class="footer"><button class="open" data-action="open-graveyard" type="button">${copy.openGraveyard}</button></div>
+    </div>
+  `;
+
+  let results: QuickRecallItem[] = [];
+  let selectedIndex = 0;
+  let requestSeq = 0;
+  const input = shadow.querySelector<HTMLInputElement>("input")!;
+  const list = shadow.querySelector<HTMLDivElement>(".list")!;
+  const status = shadow.querySelector<HTMLDivElement>(".status")!;
+  const openGraveyard = shadow.querySelector<HTMLButtonElement>("[data-action='open-graveyard']")!;
+  const close = () => root.remove();
+  const render = () => {
+    if (!results.length) {
+      list.innerHTML = `<div class="empty">${input.value.trim() ? copy.noResults : copy.empty}</div>`;
+      return;
+    }
+    list.innerHTML = results.map((item, index) => `
+      <button class="item" data-index="${index}" aria-selected="${index === selectedIndex}">
+        <span class="avatar">${item.favIconUrl ? `<img src="${escapeHtml(item.favIconUrl)}" alt="">` : escapeHtml(getFaviconFallback(item.domain))}</span>
+        <span class="content">
+          <span class="title">${escapeHtml(item.title)}</span>
+          <span class="meta">${escapeHtml(item.domain)} · ${escapeHtml(item.reason)}</span>
+        </span>
+        <span class="badge">${copy.categories[item.category]}</span>
+      </button>
+    `).join("");
+    list.querySelectorAll<HTMLButtonElement>(".item").forEach((button) => {
+      button.addEventListener("click", () => openResult(Number(button.dataset.index ?? "0")));
+    });
+  };
+  const search = async () => {
+    const seq = ++requestSeq;
+    status.textContent = copy.searching;
+    try {
+      const response = await sendRuntimeRequest<QuickRecallItem[]>({ type: "quickRecall", query: input.value });
+      if (seq !== requestSeq) return;
+      results = response;
+      selectedIndex = 0;
+      status.textContent = input.value.trim() ? copy.resultCount(results.length) : copy.ready;
+      render();
+    } catch (error) {
+      if (seq !== requestSeq) return;
+      status.textContent = error instanceof Error ? error.message : copy.failed;
+    }
+  };
+  const openResult = (index: number) => {
+    const item = results[index];
+    if (!item) return;
+    sendRuntimeMessage({ type: "openMemoryTab", tabId: item.id });
+    close();
+  };
+  openGraveyard.addEventListener("click", () => {
+    sendRuntimeMessage({ type: "openDashboard" });
+    close();
+  });
+
+  let debounce: number | undefined;
+  input.addEventListener("input", () => {
+    window.clearTimeout(debounce);
+    debounce = window.setTimeout(search, 120);
+  });
+  shadow.addEventListener("keydown", (event) => {
+    const keyEvent = event as KeyboardEvent;
+    if (keyEvent.key === "Escape") {
+      keyEvent.preventDefault();
+      close();
+    } else if (keyEvent.key === "ArrowDown") {
+      keyEvent.preventDefault();
+      selectedIndex = Math.min(results.length - 1, selectedIndex + 1);
+      render();
+    } else if (keyEvent.key === "ArrowUp") {
+      keyEvent.preventDefault();
+      selectedIndex = Math.max(0, selectedIndex - 1);
+      render();
+    } else if (keyEvent.key === "Enter") {
+      keyEvent.preventDefault();
+      openResult(selectedIndex);
+    }
+  });
+  root.addEventListener("click", (event) => {
+    if (event.target === root) close();
+  });
+  document.documentElement.append(root);
+  input.focus();
+  void search();
+}
+
 function getResurfaceCopy(language: "en" | "zh", count: number) {
   if (language === "zh") {
     return {
@@ -160,6 +350,51 @@ function getResurfaceCopy(language: "en" | "zh", count: number) {
     ghost: "Ghost Tab",
     openGraveyard: "Open Graveyard",
     dismiss: "Dismiss"
+  };
+}
+
+function getCommandPaletteCopy(language: "en" | "zh") {
+  if (language === "zh") {
+    return {
+      title: "Tab Graveyard 快速找回",
+      placeholder: "搜索标签、归档、会话...",
+      hint: "Enter 打开 · Esc 关闭",
+      aiAvailable: "当前面板仅使用本地快速搜索，不会触发 AI 请求。AI 增强找回请打开 Tab Graveyard 页面。",
+      aiUnavailable: "未开启 AI：当前仅使用本地快速搜索，不会触发 AI 请求。",
+      ready: "输入关键词，或直接选择最近记忆。",
+      searching: "搜索中...",
+      failed: "搜索失败",
+      empty: "最近记忆会显示在这里。",
+      noResults: "没有找到匹配的记忆。",
+      openGraveyard: "打开 Tab Graveyard",
+      resultCount: (count: number) => `${count} 条结果`,
+      categories: {
+        active: "找回",
+        ghost: "幽灵",
+        archived: "归档",
+        session: "会话"
+      } satisfies Record<QuickRecallItem["category"], string>
+    };
+  }
+  return {
+    title: "Tab Graveyard quick recall",
+    placeholder: "Search tabs, archives, sessions...",
+    hint: "Enter open · Esc close",
+    aiAvailable: "This panel uses local quick search only and will not send AI requests. Open Tab Graveyard for AI-enhanced recall.",
+    aiUnavailable: "AI is off: this panel uses local quick search only and will not send AI requests.",
+    ready: "Type to search, or pick a recent memory.",
+    searching: "Searching...",
+    failed: "Search failed",
+    empty: "Recent memory appears here.",
+    noResults: "No matching memory found.",
+    openGraveyard: "Open Tab Graveyard",
+    resultCount: (count: number) => `${count} ${count === 1 ? "result" : "results"}`,
+    categories: {
+      active: "Recall",
+      ghost: "Ghost",
+      archived: "Archive",
+      session: "Session"
+    } satisfies Record<QuickRecallItem["category"], string>
   };
 }
 
@@ -205,6 +440,31 @@ function sendRuntimeMessage(message: Record<string, unknown>) {
   } catch {
     return false;
   }
+}
+
+function sendRuntimeRequest<T>(message: Record<string, unknown>) {
+  return new Promise<T>((resolve, reject) => {
+    try {
+      if (typeof chrome === "undefined" || !chrome.runtime?.id) {
+        reject(new Error("Tab Graveyard is unavailable on this page."));
+        return;
+      }
+      chrome.runtime.sendMessage(message, (response) => {
+        const error = chrome.runtime.lastError;
+        if (error) {
+          reject(new Error(error.message));
+          return;
+        }
+        if (!response?.ok) {
+          reject(new Error(response?.error ?? "Extension request failed"));
+          return;
+        }
+        resolve(response.data as T);
+      });
+    } catch (error) {
+      reject(error);
+    }
+  });
 }
 
 function getScrollPercent() {

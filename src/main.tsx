@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { Archive, ArrowLeft, ArrowUpRight, Copy, Download, Edit3, Eye, EyeOff, FileUp, Ghost, HelpCircle, History, Layers, RotateCcw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
+import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, CheckCircle2, Copy, Download, Edit3, Eye, EyeOff, FileUp, Ghost, HelpCircle, History, Layers, Loader2, RotateCcw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import "./styles.css";
 import { archiveGhosts, cancelArchivePreview, clearData, confirmArchivePreview, enhanceWithDeepSeek, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, summarizeRecall, testDeepSeek, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
@@ -37,6 +37,7 @@ const messages = {
     today: "Today",
     searchPlaceholder: "Describe what you remember: time, source, color, topic...",
     search: "Search",
+    close: "Close",
     popupSearchPlaceholder: "Describe what you remember...",
     popupRecallTop: "Recall Top 10",
     popupGhostTop: "Ghost Top 10",
@@ -46,6 +47,28 @@ const messages = {
     summarizingTabs: "Summarizing...",
     summaryFailed: "Summary failed",
     aiSummary: "AI summary",
+    summaryReady: "Summary ready",
+    summaryStale: "Summary may be outdated",
+    regenerateSummary: "Regenerate",
+    summarySourceNote: "Based on tab metadata and behavior signals, not page-body content.",
+    summaryPendingTitle: "Generating browser-context summary",
+    summaryPendingDescription: "Tab Graveyard is reading the selected tabs, behavior signals, and local info cards.",
+    summaryStepRead: "Reading tab metadata",
+    summaryStepGenerate: "Synthesizing context",
+    summaryStepFinish: "Preparing summary card",
+    searchPendingTitle: "Searching memory",
+    searchPendingDescription: "Matching local memory first, then applying AI recall when enabled.",
+    actionComplete: "Complete",
+    retry: "Retry",
+    saving: "Saving...",
+    exporting: "Exporting...",
+    importing: "Importing...",
+    restoring: "Restoring...",
+    previewingArchive: "Preparing archive preview...",
+    cancellingArchive: "Cancelling...",
+    confirmingArchive: "Archiving...",
+    testingConnection: "Testing connection",
+    enhancingMemory: "Enhancing memory",
     researchGaps: "Gaps",
     aiCues: "AI cues",
     aiRecallFallback: "AI Recall fell back to local search",
@@ -275,6 +298,7 @@ const messages = {
     today: "今日",
     searchPlaceholder: "描述你记得的：时间、来源、颜色、主题...",
     search: "搜索",
+    close: "关闭",
     popupSearchPlaceholder: "描述你记得的内容...",
     popupRecallTop: "找回 Top 10",
     popupGhostTop: "幽灵标签 Top 10",
@@ -284,6 +308,28 @@ const messages = {
     summarizingTabs: "总结中...",
     summaryFailed: "总结失败",
     aiSummary: "AI 摘要",
+    summaryReady: "摘要已生成",
+    summaryStale: "摘要可能已过期",
+    regenerateSummary: "重新生成",
+    summarySourceNote: "基于标签元数据和行为信号，不是页面正文总结。",
+    summaryPendingTitle: "正在生成浏览上下文摘要",
+    summaryPendingDescription: "Tab Graveyard 正在读取这组标签、行为信号和本地信息卡。",
+    summaryStepRead: "读取标签元数据",
+    summaryStepGenerate: "生成上下文摘要",
+    summaryStepFinish: "整理摘要卡片",
+    searchPendingTitle: "正在搜索记忆",
+    searchPendingDescription: "先匹配本地记忆，启用 AI 时再进行意图找回。",
+    actionComplete: "已完成",
+    retry: "重试",
+    saving: "正在保存...",
+    exporting: "正在导出...",
+    importing: "正在导入...",
+    restoring: "正在恢复...",
+    previewingArchive: "正在准备归档预览...",
+    cancellingArchive: "正在取消...",
+    confirmingArchive: "正在归档...",
+    testingConnection: "正在测试连接",
+    enhancingMemory: "正在增强记忆",
     researchGaps: "缺口",
     aiCues: "AI 线索",
     aiRecallFallback: "AI 找回已回退到本地搜索",
@@ -879,6 +925,7 @@ function Workspace({ page, snapshot, refresh }: { page: Page; snapshot: AppSnaps
   }, [submittedQuery, filters, snapshot.tabs]);
 
   const submitSearch = () => {
+    if (window.location.hash !== "#recall") window.location.hash = "recall";
     setResults([]);
     setSubmittedQuery(query.trim());
   };
@@ -1088,6 +1135,85 @@ function TabCount({ value }: { value: number }) {
   );
 }
 
+function AsyncButton({
+  busy,
+  busyLabel,
+  children,
+  disabled,
+  ...props
+}: React.ComponentProps<typeof Button> & { busy?: boolean; busyLabel?: string }) {
+  return (
+    <Button disabled={disabled || busy} aria-busy={busy || undefined} {...props}>
+      {busy ? (
+        <>
+          <Loader2 className="h-4 w-4 animate-spin" />
+          {busyLabel}
+        </>
+      ) : children}
+    </Button>
+  );
+}
+
+function PendingBlock({ title, description, steps, className }: { title: string; description?: string; steps?: string[]; className?: string }) {
+  return (
+    <div className={cn("grid gap-3 rounded-md border bg-muted/20 p-3 text-sm", className)} aria-busy="true" aria-live="polite">
+      <div className="flex min-w-0 items-start gap-2">
+        <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-primary" />
+        <div className="min-w-0">
+          <p className="font-medium">{title}</p>
+          {description ? <p className="mt-0.5 text-muted-foreground">{description}</p> : null}
+        </div>
+      </div>
+      {steps?.length ? (
+        <div className="grid gap-2">
+          {steps.map((step, index) => (
+            <div key={step} className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className={cn("h-1.5 w-1.5 rounded-full", index === 0 ? "bg-primary" : "bg-muted-foreground/40")} />
+              <span>{step}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="grid gap-1.5">
+        <div className="h-2 w-2/3 animate-pulse rounded bg-muted-foreground/20" />
+        <div className="h-2 w-5/6 animate-pulse rounded bg-muted-foreground/15" />
+      </div>
+    </div>
+  );
+}
+
+function StatusCallout({
+  variant = "info",
+  title,
+  description,
+  action
+}: {
+  variant?: "info" | "success" | "warning" | "error";
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  const styles = {
+    info: "border-sky-500/30 bg-sky-500/10 text-sky-950 dark:text-sky-100",
+    success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-950 dark:text-emerald-100",
+    warning: "border-amber-500/30 bg-amber-500/10 text-amber-950 dark:text-amber-100",
+    error: "border-destructive/30 bg-destructive/10 text-destructive"
+  };
+  const Icon = variant === "success" ? CheckCircle2 : variant === "error" || variant === "warning" ? AlertCircle : Sparkles;
+  return (
+    <div className={cn("flex flex-wrap items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm", styles[variant])} role={variant === "error" ? "alert" : "status"} aria-live="polite">
+      <div className="flex min-w-0 items-start gap-2">
+        <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+        <div className="min-w-0">
+          <p className="font-medium">{title}</p>
+          {description ? <p className="mt-0.5 text-current/75">{description}</p> : null}
+        </div>
+      </div>
+      {action ? <div className="shrink-0">{action}</div> : null}
+    </div>
+  );
+}
+
 function RecallSynthesis({ query, results, snapshot, isSearching }: { query: string; results: RecallResult[]; snapshot: AppSnapshot; isSearching: boolean }) {
   const { language, t } = useI18n();
   const [synthesis, setSynthesis] = useState<RecallSynthesisResult | null>(null);
@@ -1106,9 +1232,12 @@ function RecallSynthesis({ query, results, snapshot, isSearching }: { query: str
   if (!query.trim()) return null;
   if (isSearching) {
     return (
-      <div className="flex min-h-9 self-start items-center rounded-md border bg-muted/20 px-3 py-2 text-sm">
-        <span className="font-medium">{t.searching}</span>
-      </div>
+      <PendingBlock
+        className="self-start"
+        title={t.searchPendingTitle}
+        description={t.searchPendingDescription}
+        steps={[t.searching, t.matchedCues, t.tabSummaries]}
+      />
     );
   }
   const topTopics = Array.from(new Set(results.flatMap((tab) => tab.card.topics))).slice(0, 4);
@@ -1126,11 +1255,12 @@ function RecallSynthesis({ query, results, snapshot, isSearching }: { query: str
         {aiCues.map((cue) => <Badge key={`${cue.type}-${cue.value}`} variant="outline">{formatRecallCue(cue, language)}</Badge>)}
         {!aiCues.length ? clarifications.map((cue) => <Badge key={cue} variant="outline">{cue}</Badge>) : null}
         {aiAvailable && results.length ? (
-          <Button
+          <AsyncButton
             variant="outline"
             size="sm"
             className="h-7"
-            disabled={isSummarizing}
+            busy={isSummarizing}
+            busyLabel={t.summarizingTabs}
             onClick={async () => {
               setIsSummarizing(true);
               setSummaryError(null);
@@ -1143,13 +1273,23 @@ function RecallSynthesis({ query, results, snapshot, isSearching }: { query: str
               }
             }}
           >
-            <Sparkles className="h-3.5 w-3.5" /> {isSummarizing ? t.summarizingTabs : t.summarizeTabs}
-          </Button>
+            <Sparkles className="h-3.5 w-3.5" /> {t.summarizeTabs}
+          </AsyncButton>
         ) : null}
       </div>
-      {fallbackReason ? <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">{t.aiRecallFallback}: {fallbackReason}</div> : null}
-      {results[0]?.aiRankReason ? <div className="rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-sky-900 dark:text-sky-100">{results[0].aiRankReason}</div> : null}
-      {summaryError ? <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{summaryError}</div> : null}
+      {isSummarizing ? (
+        <PendingBlock title={t.summaryPendingTitle} description={t.summaryPendingDescription} steps={[t.summaryStepRead, t.summaryStepGenerate, t.summaryStepFinish]} />
+      ) : null}
+      {fallbackReason ? <StatusCallout variant="warning" title={t.aiRecallFallback} description={fallbackReason} /> : null}
+      {results[0]?.aiRankReason ? <StatusCallout title={t.aiIntent} description={results[0].aiRankReason} /> : null}
+      {summaryError ? (
+        <StatusCallout
+          variant="error"
+          title={t.summaryFailed}
+          description={summaryError}
+          action={<Button variant="outline" size="sm" onClick={() => setSummaryError(null)}>{t.close}</Button>}
+        />
+      ) : null}
       {synthesis ? <RecallSummaryCard synthesis={synthesis} /> : null}
     </div>
   );
@@ -1160,11 +1300,12 @@ function RecallSummaryCard({ synthesis }: { synthesis: RecallSynthesisResult }) 
   return (
     <div className="grid gap-2 rounded-md border bg-card p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <Sparkles className="h-4 w-4 text-primary" />
-        <span className="font-medium">{t.aiSummary}</span>
+        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+        <span className="font-medium">{t.summaryReady}</span>
         <span className="text-muted-foreground">{synthesis.tabCount} {t.tabs}</span>
         {synthesis.topics.map((topic) => <Badge key={topic} variant="secondary">{topic}</Badge>)}
       </div>
+      <p className="text-xs text-muted-foreground">{t.summarySourceNote}</p>
       <p className="text-muted-foreground">{synthesis.summary}</p>
       {synthesis.bullets.length ? (
         <ul className="grid gap-1">
@@ -1204,59 +1345,76 @@ function GhostTabsPanel({ snapshot, tabs, refresh }: { snapshot: AppSnapshot; ta
   const { language, t } = useI18n();
   const notify = useToast();
   const [dismissedPreviewId, setDismissedPreviewId] = useState<string | null>(null);
+  const [archiveAction, setArchiveAction] = useState<"preview" | "cancel" | "confirm" | null>(null);
   const archivePreview = snapshot.archivePreview?.id === dismissedPreviewId ? undefined : snapshot.archivePreview;
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <SectionHeader title={t.ghostTabs} description={t.ghostTabsDescription} />
-        <Button
+        <AsyncButton
           disabled={!snapshot.ghostTabs.length}
+          busy={archiveAction === "preview"}
+          busyLabel={t.previewingArchive}
           onClick={async () => {
+            setArchiveAction("preview");
             try {
               if (snapshot.settings.archiveTrustStage === "manual") await archiveGhosts();
               else await previewArchive();
               await refresh();
             } catch {
               notify(t.archiveFailed);
+            } finally {
+              setArchiveAction(null);
             }
           }}
         >
           <Ghost className="h-4 w-4" /> {snapshot.settings.archiveTrustStage === "manual" ? interpolate(t.archiveGhostTabs, { count: snapshot.ghostTabs.length }) : t.previewArchive}
-        </Button>
+        </AsyncButton>
       </div>
+      {archiveAction === "preview" ? <PendingBlock title={t.previewingArchive} description={t.ghostTabsDescription} /> : null}
       {archivePreview ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
           <span>{interpolate(t.archiveGhostTabs, { count: archivePreview.tabIds.length })}</span>
           <div className="flex items-center gap-2">
-            <Button
+            <AsyncButton
               variant="outline"
               size="sm"
+              busy={archiveAction === "cancel"}
+              busyLabel={t.cancellingArchive}
               onClick={async () => {
                 setDismissedPreviewId(archivePreview.id);
+                setArchiveAction("cancel");
                 try {
                   await cancelArchivePreview();
                   await refresh();
                 } catch {
                   setDismissedPreviewId(null);
                   notify(t.archiveFailed);
+                } finally {
+                  setArchiveAction(null);
                 }
               }}
             >
               {t.cancelArchive}
-            </Button>
-            <Button
+            </AsyncButton>
+            <AsyncButton
               size="sm"
+              busy={archiveAction === "confirm"}
+              busyLabel={t.confirmingArchive}
               onClick={async () => {
+                setArchiveAction("confirm");
                 try {
                   await confirmArchivePreview(archivePreview.id);
                   await refresh();
                 } catch {
                   notify(t.archiveFailed);
+                } finally {
+                  setArchiveAction(null);
                 }
               }}
             >
               {t.confirmArchive}
-            </Button>
+            </AsyncButton>
           </div>
         </div>
       ) : null}
@@ -1324,16 +1482,21 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
   const [expanded, setExpanded] = useState<string[]>([]);
   const [summaries, setSummaries] = useState<Record<string, RecallSynthesisResult>>({});
   const [summarizingSession, setSummarizingSession] = useState<string | null>(null);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [restoringSession, setRestoringSession] = useState<string | null>(null);
+  const [summaryErrors, setSummaryErrors] = useState<Record<string, string>>({});
   const aiAvailable = canUseAiFeatures(snapshot.settings);
   const toggleExpanded = (id: string) => setExpanded((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   return (
     <div className="overflow-hidden rounded-md border">
-      {summaryError ? <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{summaryError}</div> : null}
       {sessions.map((session) => {
         const sessionTabs = snapshot.tabs
           .filter((tab) => session.tabIds.includes(tab.id) && (!visibleTabIds || visibleTabIds.has(tab.id)))
           .sort((a, b) => b.lastActivatedAt - a.lastActivatedAt);
+        const isSummarizingThisSession = summarizingSession === session.id;
+        const sessionSummary = summaries[session.id] ?? session.aiSummary;
+        const visibleSessionSummary = isSummarizingThisSession ? undefined : sessionSummary;
+        const summaryStale = Boolean(session.aiSummary && session.aiSummarySourceHash && session.aiSummarySourceHash !== buildSessionSummarySourceHash(sessionTabs));
+        const isExpanded = expanded.includes(session.id);
         return (
         <div key={session.id} className="border-b last:border-b-0">
           <div className="flex items-center justify-between gap-3 px-4 py-3">
@@ -1347,38 +1510,79 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
             </button>
             <div className="flex shrink-0 flex-wrap gap-2">
                 {aiAvailable && sessionTabs.length ? (
-                  <Button
+                  <AsyncButton
                     variant="outline"
                     size="sm"
-                    disabled={summarizingSession === session.id}
-                    onClick={async () => {
-                      setSummarizingSession(session.id);
-                      setSummaryError(null);
-                      try {
-                        const summary = await summarizeRecall(session.name, undefined, session.id);
-                        setSummaries((prev) => ({ ...prev, [session.id]: summary }));
+                    busy={isSummarizingThisSession}
+                    busyLabel={t.summarizingTabs}
+	                    onClick={async () => {
+                      setExpanded((prev) => (prev.includes(session.id) ? prev : [...prev, session.id]));
+	                      setSummarizingSession(session.id);
+	                      setSummaryErrors((prev) => ({ ...prev, [session.id]: "" }));
+                      setSummaries((prev) => {
+                        const next = { ...prev };
+                        delete next[session.id];
+                        return next;
+                      });
+	                      try {
+	                        const summary = await summarizeRecall(session.name, undefined, session.id);
+	                        setSummaries((prev) => ({ ...prev, [session.id]: summary }));
+                        await refresh();
                       } catch (error) {
-                        setSummaryError(error instanceof Error ? error.message : t.summaryFailed);
+                        setSummaryErrors((prev) => ({ ...prev, [session.id]: error instanceof Error ? error.message : t.summaryFailed }));
                       } finally {
                         setSummarizingSession(null);
                       }
-                    }}
-                  >
-                    <Sparkles className="h-4 w-4" /> {summarizingSession === session.id ? t.summarizingTabs : t.summarizeTabs}
-                  </Button>
+	                    }}
+	                  >
+                    <Sparkles className="h-4 w-4" /> {sessionSummary ? t.regenerateSummary : t.summarizeTabs}
+	                  </AsyncButton>
                 ) : null}
                 <RenameSessionButton sessionId={session.id} currentName={session.name} refresh={refresh} />
-                <Button size="sm" onClick={() => restoreSession(session.id)}>
+                <AsyncButton
+                  size="sm"
+                  busy={restoringSession === session.id}
+                  busyLabel={t.restoreGroup}
+                  onClick={async () => {
+                    setRestoringSession(session.id);
+                    try {
+                      await restoreSession(session.id);
+                      await refresh();
+                    } finally {
+                      setRestoringSession(null);
+                    }
+                  }}
+                >
                   <ArrowUpRight className="h-4 w-4" /> {t.restoreGroup}
-                </Button>
+                </AsyncButton>
             </div>
           </div>
-          {summaries[session.id] ? (
+          {isExpanded && isSummarizingThisSession ? (
             <div className="border-t bg-background p-3">
-              <RecallSummaryCard synthesis={summaries[session.id]} />
+              <PendingBlock title={t.summaryPendingTitle} description={t.summaryPendingDescription} steps={[t.summaryStepRead, t.summaryStepGenerate, t.summaryStepFinish]} />
             </div>
           ) : null}
-          {expanded.includes(session.id) ? (
+          {isExpanded && summaryErrors[session.id] ? (
+            <div className="border-t bg-background p-3">
+              <StatusCallout
+                variant="error"
+                title={t.summaryFailed}
+                description={summaryErrors[session.id]}
+                action={<Button variant="outline" size="sm" onClick={() => setSummaryErrors((prev) => ({ ...prev, [session.id]: "" }))}>{t.close}</Button>}
+              />
+            </div>
+          ) : null}
+          {isExpanded && !isSummarizingThisSession && summaryStale ? (
+            <div className="border-t bg-background p-3">
+              <StatusCallout variant="warning" title={t.summaryStale} description={t.summarySourceNote} />
+            </div>
+          ) : null}
+          {isExpanded && visibleSessionSummary ? (
+            <div className="border-t bg-background p-3">
+              <RecallSummaryCard synthesis={visibleSessionSummary} />
+            </div>
+          ) : null}
+          {isExpanded ? (
             <div className="border-t bg-muted/20 p-3">
               <TabList tabs={sessionTabs} refresh={refresh} />
             </div>
@@ -1388,6 +1592,35 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
       })}
     </div>
   );
+}
+
+function buildSessionSummarySourceHash(tabs: TabMemory[]) {
+  const input = [...tabs]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((tab) => [
+      tab.id,
+      tab.url,
+      tab.title,
+      tab.card.summary,
+      tab.card.topics.join(","),
+      tab.card.entities.join(","),
+      tab.card.importance,
+      tab.card.readingStatus,
+      tab.card.contentType,
+      tab.card.source,
+      tab.lastActivatedAt,
+      tab.signals.activeMs,
+      tab.signals.activationCount,
+      tab.signals.maxScrollPercent,
+      tab.signals.copiedTextCount
+    ].join("|"))
+    .join("\n");
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 function formatSessionTimeRange(createdAt: number, updatedAt: number, language: UiLanguage) {
@@ -1501,9 +1734,12 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
   const [logoOpen, setLogoOpen] = useState(false);
   const [blacklist, setBlacklist] = useState(snapshot.settings.blacklistDomains.join("\n"));
   const [deepSeekStatus, setDeepSeekStatus] = useState<string | null>(null);
+  const [deepSeekStatusKind, setDeepSeekStatusKind] = useState<"success" | "error" | "info">("info");
   const [deepSeekTesting, setDeepSeekTesting] = useState(false);
   const [deepSeekEnhancing, setDeepSeekEnhancing] = useState(false);
   const [settingsTab, setSettingsTab] = useState("general");
+  const [settingsAction, setSettingsAction] = useState<string | null>(null);
+  const [settingsStatus, setSettingsStatus] = useState<{ variant: "success" | "error"; title: string; description: string } | null>(null);
 
   const update = async (settings: Partial<SettingsType>) => {
     await saveSettings(settings);
@@ -1525,12 +1761,21 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
     URL.revokeObjectURL(url);
   };
 
-  const runWithToast = async (action: () => Promise<void>, successMessage: string) => {
+  const runWithToast = async (action: () => Promise<void>, successMessage: string, actionId?: string) => {
+    if (actionId) {
+      setSettingsAction(actionId);
+      setSettingsStatus(null);
+    }
     try {
       await action();
       notify(successMessage);
+      if (actionId) setSettingsStatus({ variant: "success", title: t.actionComplete, description: successMessage });
     } catch (error) {
-      notify(error instanceof Error ? error.message : t.actionFailed);
+      const message = error instanceof Error ? error.message : t.actionFailed;
+      notify(message);
+      if (actionId) setSettingsStatus({ variant: "error", title: t.actionFailed, description: message });
+    } finally {
+      if (actionId) setSettingsAction(null);
     }
   };
 
@@ -1753,46 +1998,54 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             onChange={(baseUrl) => updateDeepSeek({ baseUrl })}
           />
           <div className="flex flex-wrap items-center gap-3">
-            <Button
+            <AsyncButton
               className="w-fit"
               variant="outline"
-              disabled={deepSeekTesting}
+              busy={deepSeekTesting}
+              busyLabel={t.deepSeekTesting}
               onClick={async () => {
                 setDeepSeekTesting(true);
                 setDeepSeekStatus(null);
                 try {
                   const result = await testDeepSeek();
+                  setDeepSeekStatusKind("success");
                   setDeepSeekStatus(`${t.deepSeekTestOk}: ${result.model}${result.content ? ` · ${result.content}` : ""}`);
                 } catch (error) {
+                  setDeepSeekStatusKind("error");
                   setDeepSeekStatus(error instanceof Error ? error.message : String(error));
                 } finally {
                   setDeepSeekTesting(false);
                 }
               }}
             >
-              {deepSeekTesting ? t.deepSeekTesting : t.deepSeekTest}
-            </Button>
-            <Button
+              {t.deepSeekTest}
+            </AsyncButton>
+            <AsyncButton
               className="w-fit"
-              disabled={deepSeekEnhancing}
+              busy={deepSeekEnhancing}
+              busyLabel={t.deepSeekEnhancing}
               onClick={async () => {
                 setDeepSeekEnhancing(true);
                 setDeepSeekStatus(null);
                 try {
                   const result = await enhanceWithDeepSeek();
+                  setDeepSeekStatusKind("success");
                   setDeepSeekStatus(interpolate(t.deepSeekEnhanceOk, { tabs: result.enhancedTabs, sessions: result.renamedSessions }));
                   await refresh();
                 } catch (error) {
+                  setDeepSeekStatusKind("error");
                   setDeepSeekStatus(error instanceof Error ? error.message : String(error));
                 } finally {
                   setDeepSeekEnhancing(false);
                 }
               }}
             >
-              <Sparkles className="h-4 w-4" /> {deepSeekEnhancing ? t.deepSeekEnhancing : t.deepSeekEnhance}
-            </Button>
-            {deepSeekStatus ? <span className="text-sm text-muted-foreground">{deepSeekStatus}</span> : null}
+              <Sparkles className="h-4 w-4" /> {t.deepSeekEnhance}
+            </AsyncButton>
           </div>
+          {deepSeekTesting ? <PendingBlock title={t.testingConnection} description={t.deepSeekDescription} /> : null}
+          {deepSeekEnhancing ? <PendingBlock title={t.enhancingMemory} description={t.deepSeekEnhanceDescription} steps={[t.summaryStepRead, t.summaryStepGenerate, t.summaryStepFinish]} /> : null}
+          {deepSeekStatus ? <StatusCallout variant={deepSeekStatusKind === "error" ? "error" : "success"} title={deepSeekStatusKind === "error" ? t.actionFailed : t.actionComplete} description={deepSeekStatus} /> : null}
           <p className="text-xs text-muted-foreground">{t.deepSeekEnhanceDescription}</p>
         </CardContent>
       </Card>
@@ -1805,7 +2058,9 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             <CardDescription>{t.blacklistDescription}</CardDescription>
           </div>
           <textarea className="min-h-96 rounded-md border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={blacklist} onChange={(event) => setBlacklist(event.target.value)} />
-          <Button className="w-fit" onClick={() => runWithToast(() => update({ blacklistDomains: blacklist.split("\n").map((item) => item.trim()).filter(Boolean) }), t.blacklistSaved)}>{t.saveBlacklist}</Button>
+          <AsyncButton className="w-fit" busy={settingsAction === "blacklist"} busyLabel={t.saving} onClick={() => runWithToast(() => update({ blacklistDomains: blacklist.split("\n").map((item) => item.trim()).filter(Boolean) }), t.blacklistSaved, "blacklist")}>{t.saveBlacklist}</AsyncButton>
+          {settingsAction === "blacklist" ? <PendingBlock title={t.saving} description={t.blacklistDescription} /> : null}
+          {settingsTab === "rules" && settingsStatus ? <StatusCallout variant={settingsStatus.variant} title={settingsStatus.title} description={settingsStatus.description} /> : null}
         </CardContent>
       </Card>
         </TabsContent>
@@ -1817,12 +2072,14 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             <CardDescription>{t.dataDescription}</CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => runWithToast(download, t.dataExported)}><Download className="h-4 w-4" /> {t.exportJson}</Button>
+            <AsyncButton variant="outline" busy={settingsAction === "export"} busyLabel={t.exporting} onClick={() => runWithToast(download, t.dataExported, "export")}><Download className="h-4 w-4" /> {t.exportJson}</AsyncButton>
             <ImportButton refresh={refresh} />
-            <Button variant="outline" onClick={() => runWithToast(async () => { await importHistory(); await refresh(); }, t.historyImported)}><History className="h-4 w-4" /> {t.import30dHistory}</Button>
-            <Button variant="outline" onClick={() => runWithToast(async () => { await seedDemo(); await refresh(); }, t.demoLoaded)}><Sparkles className="h-4 w-4" /> {t.demoWorkspace}</Button>
-            <Button variant="destructive" onClick={() => runWithToast(async () => { await clearData(); await refresh(); }, t.dataCleared)}><Trash2 className="h-4 w-4" /> {t.clearAll}</Button>
+            <AsyncButton variant="outline" busy={settingsAction === "history"} busyLabel={t.importing} onClick={() => runWithToast(async () => { await importHistory(); await refresh(); }, t.historyImported, "history")}><History className="h-4 w-4" /> {t.import30dHistory}</AsyncButton>
+            <AsyncButton variant="outline" busy={settingsAction === "demo"} busyLabel={t.importing} onClick={() => runWithToast(async () => { await seedDemo(); await refresh(); }, t.demoLoaded, "demo")}><Sparkles className="h-4 w-4" /> {t.demoWorkspace}</AsyncButton>
+            <AsyncButton variant="destructive" busy={settingsAction === "clear"} busyLabel={t.saving} onClick={() => runWithToast(async () => { await clearData(); await refresh(); }, t.dataCleared, "clear")}><Trash2 className="h-4 w-4" /> {t.clearAll}</AsyncButton>
           </div>
+          {settingsTab === "data" && settingsAction ? <PendingBlock title={settingsAction === "export" ? t.exporting : settingsAction === "clear" ? t.saving : t.importing} description={t.dataDescription} /> : null}
+          {settingsTab === "data" && settingsStatus ? <StatusCallout variant={settingsStatus.variant} title={settingsStatus.title} description={settingsStatus.description} /> : null}
         </CardContent>
       </Card>
 
@@ -1951,6 +2208,7 @@ function formatEventType(type: string) {
 
 function Onboarding({ refresh }: { refresh: () => Promise<void> }) {
   const { t } = useI18n();
+  const [action, setAction] = useState<"history" | "demo" | "empty" | null>(null);
   return (
     <Card className="border-primary/30">
       <CardHeader>
@@ -1958,9 +2216,55 @@ function Onboarding({ refresh }: { refresh: () => Promise<void> }) {
         <CardDescription>{t.firstRunDescription}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-3 md:grid-cols-3">
-        <Button onClick={async () => { await saveSettings({ aiMode: "local-first", strictPrivacy: false, onboardingComplete: true }); await importHistory(); await refresh(); }}>{t.importHistory}</Button>
-        <Button variant="secondary" onClick={async () => { await seedDemo(); await saveSettings({ onboardingComplete: true }); await refresh(); }}>{t.useDemo}</Button>
-        <Button variant="outline" onClick={async () => { await saveSettings({ aiMode: "local-only", strictPrivacy: true, onboardingComplete: true }); await refresh(); }}>{t.startEmpty}</Button>
+        <AsyncButton
+          busy={action === "history"}
+          busyLabel={t.importing}
+          onClick={async () => {
+            setAction("history");
+            try {
+              await saveSettings({ aiMode: "local-first", strictPrivacy: false, onboardingComplete: true });
+              await importHistory();
+              await refresh();
+            } finally {
+              setAction(null);
+            }
+          }}
+        >
+          {t.importHistory}
+        </AsyncButton>
+        <AsyncButton
+          variant="secondary"
+          busy={action === "demo"}
+          busyLabel={t.importing}
+          onClick={async () => {
+            setAction("demo");
+            try {
+              await seedDemo();
+              await saveSettings({ onboardingComplete: true });
+              await refresh();
+            } finally {
+              setAction(null);
+            }
+          }}
+        >
+          {t.useDemo}
+        </AsyncButton>
+        <AsyncButton
+          variant="outline"
+          busy={action === "empty"}
+          busyLabel={t.saving}
+          onClick={async () => {
+            setAction("empty");
+            try {
+              await saveSettings({ aiMode: "local-only", strictPrivacy: true, onboardingComplete: true });
+              await refresh();
+            } finally {
+              setAction(null);
+            }
+          }}
+        >
+          {t.startEmpty}
+        </AsyncButton>
       </CardContent>
     </Card>
   );
@@ -1993,17 +2297,33 @@ function TabList({
 function MemoryResultRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemory | RecallResult; refresh: () => Promise<void>; reason?: string; reasonVariant: ReasonVariant }) {
   const { language, t } = useI18n();
   const notify = useToast();
+  const [restoring, setRestoring] = useState(false);
+  const [copying, setCopying] = useState(false);
   const contentType = enumMeta("contentType", tab.card.contentType, language);
   const importance = enumMeta("importance", tab.card.importance, language);
   const source = enumMeta("source", tab.card.source, language);
   const readingStatus = enumMeta("readingStatus", tab.card.readingStatus, language);
   const statusLabel = reasonVariant === "ghost" ? t.ghostStatus : tab.archived ? t.archived : t.active;
   return (
-    <div className="grid min-w-0 gap-3 px-4 py-3 2xl:grid-cols-[minmax(0,1fr)_minmax(440px,760px)] 2xl:items-center">
+    <div className="grid min-w-0 gap-3 px-4 py-3 xl:grid-cols-[minmax(420px,1fr)_minmax(360px,0.9fr)] xl:items-center">
       <div className="flex min-w-0 items-start gap-3">
         <Favicon tab={tab} />
         <div className="min-w-0 flex-1">
-          <button className="flex min-w-0 items-start gap-1.5 text-left text-sm font-medium leading-5 hover:underline" title={t.reopen} onClick={async () => { await restoreTab(tab.id); await refresh(); }}>
+          <button
+            className="flex min-w-0 items-start gap-1.5 text-left text-sm font-medium leading-5 hover:underline disabled:cursor-wait disabled:opacity-70"
+            title={t.reopen}
+            disabled={restoring}
+            onClick={async () => {
+              setRestoring(true);
+              try {
+                await restoreTab(tab.id);
+                await refresh();
+              } finally {
+                setRestoring(false);
+              }
+            }}
+          >
+            {restoring ? <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" /> : null}
             {tab.card.aiEnhanced ? (
               <span className="mt-0.5 shrink-0 text-sky-500 dark:text-sky-300" title={t.aiEnhanced}>
                 <Sparkles className="h-3.5 w-3.5" aria-label={t.aiEnhanced} />
@@ -2017,15 +2337,18 @@ function MemoryResultRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemo
               className="shrink-0 rounded-sm p-0.5 hover:bg-muted hover:text-foreground"
               title={t.copy}
               onClick={async () => {
+                setCopying(true);
                 try {
                   await navigator.clipboard.writeText(tab.url);
                   notify(t.copied);
                 } catch {
                   notify(t.copyFailed);
+                } finally {
+                  setCopying(false);
                 }
               }}
             >
-              <Copy className="h-3.5 w-3.5" />
+              {copying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
             </button>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1">
@@ -2036,14 +2359,14 @@ function MemoryResultRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemo
           </div>
         </div>
       </div>
-      <div className="min-w-0 text-xs leading-5 text-muted-foreground">
-        <div className="truncate">
+      <div className="min-w-0 pl-[52px] text-xs leading-5 text-muted-foreground xl:pl-0">
+        <div className="flex min-w-0 flex-wrap gap-x-2 gap-y-0.5 xl:flex-nowrap xl:truncate">
           <span>{t.lastActive}: <span className="font-medium text-foreground">{formatAbsoluteDateTime(tab.lastActivatedAt)}</span></span>
-          <span className="mx-2 text-border">|</span>
+          <span className="text-border">|</span>
           <span>{t.opened}: <span className="font-medium text-foreground">{formatAbsoluteDateTime(tab.openedAt)}</span></span>
-          <span className="mx-2 text-border">|</span>
+          <span className="text-border">|</span>
           <span title={source.description}>{t.source}: <span className="font-medium text-foreground">{source.label}</span></span>
-          <span className="mx-2 text-border">|</span>
+          <span className="text-border">|</span>
           <span title={readingStatus.description}>{t.readingStatus}: <span className="font-medium text-foreground">{readingStatus.label}</span></span>
         </div>
         <ReasonStrip tab={tab} reason={reason} reasonVariant={reasonVariant} />
@@ -2163,6 +2486,8 @@ function isLowContrastFavicon(image: HTMLImageElement) {
 function EditCardButton({ tab, refresh, compact = false }: { tab: TabMemory | RecallResult; refresh: () => Promise<void>; compact?: boolean }) {
   const { language, t } = useI18n();
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState<"card" | "rule" | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Record<string, string>>({
     summary: tab.card.summary,
     topics: tab.card.topics.join(", "),
@@ -2207,9 +2532,47 @@ function EditCardButton({ tab, refresh, compact = false }: { tab: TabMemory | Re
             <SelectRow label={t.type} value={draft.contentType} options={enumOptions("contentType", ["article", "video", "pdf", "tweet", "repo", "doc", "image", "saas"], language)} onChange={(contentType) => setDraft((prev) => ({ ...prev, contentType }))} />
             <SelectRow label={t.source} value={draft.source} options={enumOptions("source", ["twitter", "slack", "email", "search", "direct", "bookmark"], language)} onChange={(source) => setDraft((prev) => ({ ...prev, source }))} />
           </div>
+          {error ? <StatusCallout variant="error" title={t.actionFailed} description={error} action={<Button variant="outline" size="sm" onClick={() => setError(null)}>{t.close}</Button>} /> : null}
           <div className="flex flex-wrap gap-2">
-            <Button onClick={async () => { await updateTabCard(tab.id, toCardPatch()); setOpen(false); await refresh(); }}>{t.save}</Button>
-            <Button variant="outline" onClick={async () => { await updateTabCard(tab.id, toCardPatch(), true); setOpen(false); await refresh(); }}>{t.saveAsRule}</Button>
+            <AsyncButton
+              busy={saving === "card"}
+              busyLabel={t.saving}
+              onClick={async () => {
+                setSaving("card");
+                setError(null);
+                try {
+                  await updateTabCard(tab.id, toCardPatch());
+                  setOpen(false);
+                  await refresh();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : t.actionFailed);
+                } finally {
+                  setSaving(null);
+                }
+              }}
+            >
+              {t.save}
+            </AsyncButton>
+            <AsyncButton
+              variant="outline"
+              busy={saving === "rule"}
+              busyLabel={t.saving}
+              onClick={async () => {
+                setSaving("rule");
+                setError(null);
+                try {
+                  await updateTabCard(tab.id, toCardPatch(), true);
+                  setOpen(false);
+                  await refresh();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : t.actionFailed);
+                } finally {
+                  setSaving(null);
+                }
+              }}
+            >
+              {t.saveAsRule}
+            </AsyncButton>
           </div>
         </div>
       </DialogContent>
@@ -2221,13 +2584,34 @@ function RenameSessionButton({ sessionId, currentName, refresh }: { sessionId: s
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(currentName);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild><Button variant="outline" size="sm">{t.edit}</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>{t.sessions}</DialogTitle></DialogHeader>
         <TextRow label="Name" value={name} onChange={setName} />
-        <Button onClick={async () => { await renameSession(sessionId, name); setOpen(false); await refresh(); }}>{t.save}</Button>
+        {error ? <StatusCallout variant="error" title={t.actionFailed} description={error} action={<Button variant="outline" size="sm" onClick={() => setError(null)}>{t.close}</Button>} /> : null}
+        <AsyncButton
+          busy={saving}
+          busyLabel={t.saving}
+          onClick={async () => {
+            setSaving(true);
+            setError(null);
+            try {
+              await renameSession(sessionId, name);
+              setOpen(false);
+              await refresh();
+            } catch (err) {
+              setError(err instanceof Error ? err.message : t.actionFailed);
+            } finally {
+              setSaving(false);
+            }
+          }}
+        >
+          {t.save}
+        </AsyncButton>
       </DialogContent>
     </Dialog>
   );
@@ -2267,12 +2651,19 @@ function PopupListItem({ tab, refresh }: { tab: TabMemory; refresh: () => Promis
   const { language, t } = useI18n();
   const [failed, setFailed] = useState(false);
   const [lowContrast, setLowContrast] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   return (
     <button
-      className="flex w-full min-w-0 items-start gap-2 overflow-hidden px-3 py-2 text-left hover:bg-accent"
+      className="flex w-full min-w-0 items-start gap-2 overflow-hidden px-3 py-2 text-left hover:bg-accent disabled:cursor-wait disabled:opacity-70"
+      disabled={restoring}
       onClick={async () => {
-        await restoreTab(tab.id);
-        await refresh();
+        setRestoring(true);
+        try {
+          await restoreTab(tab.id);
+          await refresh();
+        } finally {
+          setRestoring(false);
+        }
       }}
     >
       <span className={cn(
@@ -2294,6 +2685,7 @@ function PopupListItem({ tab, refresh }: { tab: TabMemory; refresh: () => Promis
       </span>
       <span className="min-w-0 flex-1 overflow-hidden">
         <span className="flex min-w-0 items-start gap-1 text-sm font-medium leading-5">
+          {restoring ? <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" /> : null}
           {tab.card.aiEnhanced ? (
             <span className="mt-0.5 shrink-0 text-sky-500 dark:text-sky-300" title={t.aiEnhanced}>
               <Sparkles className="h-3.5 w-3.5" aria-label={t.aiEnhanced} />
@@ -2482,6 +2874,8 @@ function ImportButton({ refresh }: { refresh: () => Promise<void> }) {
   const notify = useToast();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -2493,20 +2887,30 @@ function ImportButton({ refresh }: { refresh: () => Promise<void> }) {
           <DialogDescription>{t.importDescription}</DialogDescription>
         </DialogHeader>
         <textarea className="min-h-40 rounded-md border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={text} onChange={(event) => setText(event.target.value)} />
-        <Button
+        {importing ? <PendingBlock title={t.importing} description={t.importDescription} /> : null}
+        {error ? <StatusCallout variant="error" title={t.actionFailed} description={error} action={<Button variant="outline" size="sm" onClick={() => setError(null)}>{t.close}</Button>} /> : null}
+        <AsyncButton
+          busy={importing}
+          busyLabel={t.importing}
           onClick={async () => {
+            setImporting(true);
+            setError(null);
             try {
               await importData(JSON.parse(text));
               setOpen(false);
               await refresh();
               notify(t.dataImported);
             } catch (error) {
-              notify(error instanceof Error ? error.message : t.actionFailed);
+              const message = error instanceof Error ? error.message : t.actionFailed;
+              setError(message);
+              notify(message);
+            } finally {
+              setImporting(false);
             }
           }}
         >
           {t.import}
-        </Button>
+        </AsyncButton>
       </DialogContent>
     </Dialog>
   );

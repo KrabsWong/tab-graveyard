@@ -76,6 +76,8 @@ export type SessionMemory = {
   userNamed?: boolean;
   aiNamed?: boolean;
   aiNamedAt?: number;
+  aiSummary?: RecallSynthesisResult;
+  aiSummarySourceHash?: string;
 };
 
 export type UserRule = {
@@ -178,6 +180,16 @@ export type RecallCue = {
   value: string;
 };
 
+export type QuickRecallItem = {
+  id: string;
+  title: string;
+  url: string;
+  domain: string;
+  favIconUrl?: string;
+  category: "active" | "ghost" | "archived" | "session";
+  reason: string;
+};
+
 export type RecallSynthesisResult = {
   summary: string;
   bullets: string[];
@@ -227,6 +239,8 @@ export type ExtensionRequest =
   | { type: "resurfaceAction"; tabIds: string[]; action: "shown" | "dismissed" | "opened" }
   | { type: "copyUrlTrigger"; url: string }
   | { type: "recall"; query: string; filters?: RecallFilters }
+  | { type: "quickRecall"; query: string }
+  | { type: "commandPaletteContext" }
   | { type: "summarizeRecall"; query: string; tabIds?: string[]; sessionId?: string }
   | { type: "saveSettings"; settings: Partial<Settings> }
   | { type: "exportData" }
