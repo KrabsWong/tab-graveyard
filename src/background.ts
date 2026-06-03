@@ -117,6 +117,8 @@ async function handleMessage(request: ExtensionRequest) {
       return archiveGhosts();
     case "previewArchive":
       return previewArchive();
+    case "cancelArchivePreview":
+      return cancelArchivePreview();
     case "confirmArchivePreview":
       return confirmArchivePreview(request.previewId);
     case "undoArchive":
@@ -349,6 +351,15 @@ async function confirmArchivePreview(previewId: string) {
     throw new Error("Archive preview expired.");
   }
   return archiveGhosts(new Set(state.archivePreview.tabIds));
+}
+
+async function cancelArchivePreview() {
+  const state = await getState();
+  const next = state.archivePreview
+    ? addEvent({ ...state, archivePreview: undefined }, "archive_preview_cancel", { count: state.archivePreview.tabIds.length })
+    : state;
+  await setState(next);
+  return createSnapshot(next);
 }
 
 async function updateTabCard(tabId: string, cardPatch: Partial<TabInfoCard>, saveRule = false) {
@@ -833,6 +844,10 @@ async function recallWithDeepSeek(query: string, filters?: RecallFilters) {
 async function summarizeRecallWithDeepSeek(query: string, tabIds?: string[], sessionId?: string): Promise<RecallSynthesisResult> {
   const state = await getState();
   if (!canUseDeepSeek(state)) throw new Error("DeepSeek is disabled by AI mode or strict privacy mode.");
+  const language = resolveUiLanguage(state.settings.language);
+  const outputLanguage = language === "zh"
+    ? "Simplified Chinese. All user-facing JSON string values must be Chinese. Keep product names, domains, URLs, API names, and code identifiers in their original language."
+    : "English. Keep product names, domains, URLs, API names, and code identifiers in their original language.";
 
   const idSet = new Set(tabIds ?? []);
   const tabs = getVisibleTabs(state.tabs, state.settings)
@@ -843,7 +858,7 @@ async function summarizeRecallWithDeepSeek(query: string, tabIds?: string[], ses
 
   const payload = await deepSeekJson<DeepSeekSynthesis>(
     state,
-    "You summarize a user's browser-memory tabs. Return compact JSON only.",
+    `You summarize a user's browser-memory tabs. Return compact JSON only. Output language: ${outputLanguage}`,
     `User request: ${query || "Summarize this browser session."}
 Tabs:
 ${tabs.map(formatTabForDeepSeek).join("\n")}
@@ -855,7 +870,8 @@ Return JSON:
   "gaps": ["missing angle or useful next research step"],
   "topics": ["topic"]
 }
-Use only the provided tab metadata and behavior signals. Do not claim page-body facts that are not present.`,
+Use only the provided tab metadata and behavior signals. Do not claim page-body facts that are not present.
+Language requirement is strict: summary, bullets, gaps, and topics must use the output language specified in the system message.`,
     700
   );
 

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { Archive, ArrowLeft, ArrowUpRight, Copy, Download, Edit3, Eye, EyeOff, FileUp, Ghost, HelpCircle, History, Layers, RotateCcw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import "./styles.css";
-import { archiveGhosts, clearData, confirmArchivePreview, enhanceWithDeepSeek, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, summarizeRecall, testDeepSeek, undoArchive, updateTabCard } from "@/lib/api";
+import { archiveGhosts, cancelArchivePreview, clearData, confirmArchivePreview, enhanceWithDeepSeek, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, summarizeRecall, testDeepSeek, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
 import type { AppSnapshot, BrowseGroupMode, LanguageMode, RecallFilters, RecallResult, RecallSynthesisResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -49,6 +49,31 @@ const messages = {
     researchGaps: "Gaps",
     aiCues: "AI cues",
     aiRecallFallback: "AI Recall fell back to local search",
+    aiRecallOn: "AI Recall on",
+    localRecall: "Local Recall",
+    providerDeepSeek: "DeepSeek",
+    intentRerank: "Intent rerank",
+    tabSummaries: "Tab summaries",
+    resetFilters: "Reset filters",
+    moreFilters: "More filters",
+    fewerFilters: "Fewer filters",
+    activeFilters: "Active filters",
+    matchedBecause: "Matched",
+    aiIntent: "AI intent",
+    behaviorSignals: "Behavior",
+    trustSummary: "Status summary",
+    recordingStatus: "Recording",
+    recordingActiveStatus: "Active",
+    recordingPausedStatus: "Paused",
+    aiStatus: "AI",
+    provider: "Provider",
+    lastAiCall: "Last AI call",
+    outboundData: "Outbound data",
+    blockedDomains: "Blocked domains",
+    localMemory: "Local memory",
+    enabled: "Enabled",
+    disabled: "Disabled",
+    notYet: "Not yet",
     resurfaceHint: "Resurface: related archived pages will appear while you browse.",
     undoArchive: "Undo last archive",
     archiveGhostTabs: "Archive {count} Ghost Tabs",
@@ -114,6 +139,7 @@ const messages = {
     groupSession: "Session",
     previewArchive: "Preview archive",
     confirmArchive: "Confirm archive",
+    cancelArchive: "Cancel archive",
     privacyMap: "Data & Privacy",
     privacyMapDescription: "What Tab Graveyard stores, skips, and may send to configured AI providers.",
     privacyLocalFields: "Stored locally",
@@ -261,6 +287,31 @@ const messages = {
     researchGaps: "缺口",
     aiCues: "AI 线索",
     aiRecallFallback: "AI 找回已回退到本地搜索",
+    aiRecallOn: "AI 找回开启",
+    localRecall: "本地找回",
+    providerDeepSeek: "DeepSeek",
+    intentRerank: "意图重排",
+    tabSummaries: "标签总结",
+    resetFilters: "重置筛选",
+    moreFilters: "更多筛选",
+    fewerFilters: "收起筛选",
+    activeFilters: "当前筛选",
+    matchedBecause: "匹配原因",
+    aiIntent: "AI 意图",
+    behaviorSignals: "行为信号",
+    trustSummary: "状态摘要",
+    recordingStatus: "记录",
+    recordingActiveStatus: "运行中",
+    recordingPausedStatus: "已暂停",
+    aiStatus: "AI",
+    provider: "服务商",
+    lastAiCall: "最近 AI 调用",
+    outboundData: "外发数据",
+    blockedDomains: "屏蔽域名",
+    localMemory: "本地记忆",
+    enabled: "已启用",
+    disabled: "已关闭",
+    notYet: "暂无",
     resurfaceHint: "主动唤醒：浏览时会提示相关的归档页面。",
     undoArchive: "撤销上次归档",
     archiveGhostTabs: "归档 {count} 个幽灵标签",
@@ -326,6 +377,7 @@ const messages = {
     groupSession: "会话",
     previewArchive: "预览归档",
     confirmArchive: "确认归档",
+    cancelArchive: "取消归档",
     privacyMap: "数据与隐私",
     privacyMapDescription: "说明 Tab Graveyard 会保存什么、不会记录什么，以及哪些信息可能发送给已配置的 AI 服务。",
     privacyLocalFields: "本地保存",
@@ -831,6 +883,8 @@ function Workspace({ page, snapshot, refresh }: { page: Page; snapshot: AppSnaps
     setSubmittedQuery(query.trim());
   };
 
+  const aiAvailable = canUseAiFeatures(snapshot.settings);
+  const aiFallbackReason = results.find((tab) => tab.aiRecallStatus === "fallback")?.aiFallbackReason;
   const continueTabs = useMemo(() => snapshot.tabs.filter((tab) => !tab.archived).sort((a, b) => b.lastActivatedAt - a.lastActivatedAt), [snapshot.tabs]);
 
   return (
@@ -852,23 +906,7 @@ function Workspace({ page, snapshot, refresh }: { page: Page; snapshot: AppSnaps
               </Button>
             </div>
           </header>
-          <div className="flex gap-2">
-            <div className="relative min-w-0 flex-1">
-            <Search className="pointer-events-none absolute left-4 top-3.5 h-5 w-5 text-muted-foreground" />
-            <Input
-              className="h-12 pl-12 text-base"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") submitSearch();
-              }}
-              placeholder={t.searchPlaceholder}
-            />
-            </div>
-            <Button variant="secondary" className="h-12 px-5" disabled={isSearching} onClick={submitSearch}>
-              <Search className="h-4 w-4" /> {isSearching ? `${t.search}...` : t.search}
-            </Button>
-          </div>
+          <RecallSearchBar query={query} setQuery={setQuery} isSearching={isSearching} onSubmit={submitSearch} aiAvailable={aiAvailable} fallbackReason={aiFallbackReason} />
         </div>
       </section>
 
@@ -913,6 +951,63 @@ function NewTabHome({ snapshot, continueTabs, refresh }: { snapshot: AppSnapshot
           ))}
         </div>
       </section>
+    </div>
+  );
+}
+
+function RecallSearchBar({
+  query,
+  setQuery,
+  isSearching,
+  onSubmit,
+  aiAvailable,
+  fallbackReason
+}: {
+  query: string;
+  setQuery: (query: string) => void;
+  isSearching: boolean;
+  onSubmit: () => void;
+  aiAvailable: boolean;
+  fallbackReason?: string;
+}) {
+  const { t } = useI18n();
+  const modeLabel = fallbackReason ? t.localRecall : aiAvailable ? t.aiRecallOn : t.localRecall;
+  return (
+    <div className={cn("rounded-md border bg-background", aiAvailable && !fallbackReason ? "border-primary/20" : "border-border")}>
+      <div className="flex gap-2 p-2">
+        <div className="relative min-w-0 flex-1">
+          {aiAvailable ? (
+            <Sparkles className="pointer-events-none absolute left-3.5 top-3.5 h-5 w-5 text-foreground" />
+          ) : (
+            <Search className="pointer-events-none absolute left-3.5 top-3.5 h-5 w-5 text-muted-foreground" />
+          )}
+          <Input
+            className="h-12 border-0 bg-transparent pl-11 text-base shadow-none focus-visible:ring-0"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") onSubmit();
+            }}
+            placeholder={t.searchPlaceholder}
+          />
+        </div>
+        <Button variant="secondary" className="h-12 px-5" disabled={isSearching} onClick={onSubmit}>
+          <Search className="h-4 w-4" /> {isSearching ? `${t.search}...` : t.search}
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 border-t bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">{modeLabel}</span>
+        {aiAvailable ? (
+          <>
+            <Badge variant="secondary">{t.providerDeepSeek}</Badge>
+            <Badge variant="outline">{t.intentRerank}</Badge>
+            <Badge variant="outline">{t.tabSummaries}</Badge>
+          </>
+        ) : (
+          <span>{t.strictPrivacyDescription}</span>
+        )}
+        {fallbackReason ? <span className="min-w-0 truncate text-amber-700 dark:text-amber-300">{t.aiRecallFallback}: {fallbackReason}</span> : null}
+      </div>
     </div>
   );
 }
@@ -1108,6 +1203,8 @@ function formatRecallCue(cue: NonNullable<RecallResult["aiCues"]>[number], langu
 function GhostTabsPanel({ snapshot, tabs, refresh }: { snapshot: AppSnapshot; tabs: TabMemory[]; refresh: () => Promise<void> }) {
   const { language, t } = useI18n();
   const notify = useToast();
+  const [dismissedPreviewId, setDismissedPreviewId] = useState<string | null>(null);
+  const archivePreview = snapshot.archivePreview?.id === dismissedPreviewId ? undefined : snapshot.archivePreview;
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1127,22 +1224,40 @@ function GhostTabsPanel({ snapshot, tabs, refresh }: { snapshot: AppSnapshot; ta
           <Ghost className="h-4 w-4" /> {snapshot.settings.archiveTrustStage === "manual" ? interpolate(t.archiveGhostTabs, { count: snapshot.ghostTabs.length }) : t.previewArchive}
         </Button>
       </div>
-      {snapshot.archivePreview ? (
+      {archivePreview ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
-          <span>{interpolate(t.archiveGhostTabs, { count: snapshot.archivePreview.tabIds.length })}</span>
-          <Button
-            size="sm"
-            onClick={async () => {
-              try {
-                await confirmArchivePreview(snapshot.archivePreview!.id);
-                await refresh();
-              } catch {
-                notify(t.archiveFailed);
-              }
-            }}
-          >
-            {t.confirmArchive}
-          </Button>
+          <span>{interpolate(t.archiveGhostTabs, { count: archivePreview.tabIds.length })}</span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                setDismissedPreviewId(archivePreview.id);
+                try {
+                  await cancelArchivePreview();
+                  await refresh();
+                } catch {
+                  setDismissedPreviewId(null);
+                  notify(t.archiveFailed);
+                }
+              }}
+            >
+              {t.cancelArchive}
+            </Button>
+            <Button
+              size="sm"
+              onClick={async () => {
+                try {
+                  await confirmArchivePreview(archivePreview.id);
+                  await refresh();
+                } catch {
+                  notify(t.archiveFailed);
+                }
+              }}
+            >
+              {t.confirmArchive}
+            </Button>
+          </div>
         </div>
       ) : null}
       {tabs.length ? (
@@ -1302,23 +1417,45 @@ function pad2(value: number) {
 
 function Facets({ snapshot, filters, setFilters }: { snapshot: AppSnapshot; filters: RecallFilters; setFilters: React.Dispatch<React.SetStateAction<RecallFilters>> }) {
   const { language, t } = useI18n();
+  const [showMore, setShowMore] = useState(false);
   const snapshotTopics = Array.from(new Set(snapshot.tabs.flatMap((tab) => tab.card.topics))).slice(0, 16);
   const snapshotEntities = Array.from(new Set(snapshot.tabs.flatMap((tab) => tab.card.entities))).slice(0, 16);
+  const activeFilters = Object.entries(filters).filter(([, value]) => value != null && value !== "all" && value !== false);
+  const resetFilters = () => setFilters({ archivedOnly: false, time: "all", source: "all", contentType: "all", importance: "all", readingStatus: "all", color: "all", topic: "all", entity: "all" });
+  const clearFilter = (key: string) => setFilters((prev) => ({ ...prev, [key]: key === "archivedOnly" ? false : "all" }));
   return (
     <Card className="h-fit min-w-0">
       <CardHeader>
-        <CardTitle>{t.facets}</CardTitle>
-        <CardDescription>{t.facetsDescription}</CardDescription>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle>{t.facets}</CardTitle>
+          <Button variant="ghost" size="sm" className="h-7 px-2" disabled={!activeFilters.length} onClick={resetFilters}>{t.resetFilters}</Button>
+        </div>
+        <CardDescription>{activeFilters.length ? t.activeFilters : t.facetsDescription}</CardDescription>
       </CardHeader>
       <CardContent className="grid min-w-0 gap-3">
+        {activeFilters.length ? (
+          <div className="flex flex-wrap gap-1">
+            {activeFilters.map(([key, value]) => (
+              <Badge key={key} variant="secondary" className="gap-1">
+                {formatFilterBadge(key, String(value), language, t)}
+                <button type="button" className="ml-0.5 rounded-sm px-0.5 text-muted-foreground hover:bg-background hover:text-foreground" onClick={() => clearFilter(key)} aria-label={`${t.resetFilters}: ${key}`}>×</button>
+              </Badge>
+            ))}
+          </div>
+        ) : null}
         <SelectRow label={t.time} value={filters.time ?? "all"} options={enumOptions("time", ["all", "today", "yesterday", "week", "last-week"], language)} onChange={(time) => setFilters((prev) => ({ ...prev, time: time as RecallFilters["time"] }))} />
         <SelectRow label={t.source} value={filters.source ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("source", ["twitter", "slack", "email", "search", "direct", "bookmark"], language)]} onChange={(source) => setFilters((prev) => ({ ...prev, source: source as RecallFilters["source"] }))} />
         <SelectRow label={t.type} value={filters.contentType ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("contentType", ["article", "video", "pdf", "tweet", "repo", "doc", "image", "saas"], language)]} onChange={(contentType) => setFilters((prev) => ({ ...prev, contentType: contentType as RecallFilters["contentType"] }))} />
-        <SelectRow label={t.importance} value={filters.importance ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("importance", ["must", "should", "maybe", "safe"], language)]} onChange={(importance) => setFilters((prev) => ({ ...prev, importance: importance as RecallFilters["importance"] }))} />
-        <SelectRow label={t.readingStatus} value={filters.readingStatus ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("readingStatus", ["fully-read", "skimmed", "bounced"], language)]} onChange={(readingStatus) => setFilters((prev) => ({ ...prev, readingStatus: readingStatus as RecallFilters["readingStatus"] }))} />
-        <SelectRow label={t.color} value={filters.color ?? "all"} options={["all", "blue", "black", "slate", "orange", "white", "purple"]} onChange={(color) => setFilters((prev) => ({ ...prev, color }))} />
-        <SelectRow label={t.topic} value={filters.topic ?? "all"} options={["all", ...snapshotTopics]} onChange={(topic) => setFilters((prev) => ({ ...prev, topic }))} />
-        <SelectRow label={t.entity} value={filters.entity ?? "all"} options={["all", ...snapshotEntities]} onChange={(entity) => setFilters((prev) => ({ ...prev, entity }))} />
+        {showMore ? (
+          <>
+            <SelectRow label={t.importance} value={filters.importance ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("importance", ["must", "should", "maybe", "safe"], language)]} onChange={(importance) => setFilters((prev) => ({ ...prev, importance: importance as RecallFilters["importance"] }))} />
+            <SelectRow label={t.readingStatus} value={filters.readingStatus ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("readingStatus", ["fully-read", "skimmed", "bounced"], language)]} onChange={(readingStatus) => setFilters((prev) => ({ ...prev, readingStatus: readingStatus as RecallFilters["readingStatus"] }))} />
+            <SelectRow label={t.color} value={filters.color ?? "all"} options={["all", "blue", "black", "slate", "orange", "white", "purple"]} onChange={(color) => setFilters((prev) => ({ ...prev, color }))} />
+            <SelectRow label={t.topic} value={filters.topic ?? "all"} options={["all", ...snapshotTopics]} onChange={(topic) => setFilters((prev) => ({ ...prev, topic }))} />
+            <SelectRow label={t.entity} value={filters.entity ?? "all"} options={["all", ...snapshotEntities]} onChange={(entity) => setFilters((prev) => ({ ...prev, entity }))} />
+          </>
+        ) : null}
+        <Button variant="outline" size="sm" onClick={() => setShowMore((value) => !value)}>{showMore ? t.fewerFilters : t.moreFilters}</Button>
         <label className="flex min-w-0 items-center justify-between gap-3 rounded-md border p-2 text-sm">
           {t.archivedOnly}
           <Switch checked={Boolean(filters.archivedOnly)} onCheckedChange={(archivedOnly) => setFilters((prev) => ({ ...prev, archivedOnly }))} />
@@ -1335,6 +1472,27 @@ function ResultGrid({ results, fallbackTabs, refresh }: { results: RecallResult[
     return <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">{t.noResults}</CardContent></Card>;
   }
   return <TabList tabs={tabs} refresh={refresh} reasonVariant={results.length ? "recall" : "default"} reasonResolver={results.length ? (tab) => buildRecallReason(tab, language, t) : undefined} />;
+}
+
+function formatFilterBadge(key: string, value: string, language: UiLanguage, t: Text) {
+  const labels: Record<string, string> = {
+    archivedOnly: t.archivedOnly,
+    time: t.time,
+    source: t.source,
+    contentType: t.contentType,
+    importance: t.importance,
+    readingStatus: t.readingStatus,
+    color: t.color,
+    topic: t.topic,
+    entity: t.entity
+  };
+  if (key === "source") return `${labels[key]}: ${enumMeta("source", value, language).label}`;
+  if (key === "contentType") return `${labels[key]}: ${enumMeta("contentType", value, language).label}`;
+  if (key === "importance") return `${labels[key]}: ${enumMeta("importance", value, language).label}`;
+  if (key === "readingStatus") return `${labels[key]}: ${enumMeta("readingStatus", value, language).label}`;
+  if (key === "time") return `${labels[key]}: ${enumMeta("time", value, language).label}`;
+  if (key === "archivedOnly") return t.archivedOnly;
+  return `${labels[key] ?? key}: ${value}`;
 }
 
 function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: () => Promise<void> }) {
@@ -1513,6 +1671,15 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
         </TabsContent>
 
         <TabsContent value="privacy" className="mt-4 grid items-start gap-5">
+      <TrustStatusSummary
+        title={t.trustSummary}
+        items={[
+          { label: t.recordingStatus, value: snapshot.settings.recordingPaused ? t.recordingPausedStatus : t.recordingActiveStatus },
+          { label: t.strictPrivacy, value: snapshot.settings.strictPrivacy ? t.enabled : t.disabled },
+          { label: t.blockedDomains, value: String(snapshot.settings.blacklistDomains.length) },
+          { label: t.localMemory, value: String(snapshot.tabs.length) }
+        ]}
+      />
       <Card>
         <CardContent className="grid gap-6 p-5">
           <ToggleRow label={t.pauseRecording} description={t.pauseRecordingDescription} checked={snapshot.settings.recordingPaused} onChange={(recordingPaused) => update({ recordingPaused })} />
@@ -1534,6 +1701,15 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
       </Card>
         </TabsContent>
         <TabsContent value="ai" className="mt-4 grid items-start gap-5">
+      <TrustStatusSummary
+        title={t.trustSummary}
+        items={[
+          { label: t.aiStatus, value: canUseAiFeatures(snapshot.settings) ? t.enabled : t.disabled },
+          { label: t.provider, value: snapshot.settings.deepSeek.enabled ? t.providerDeepSeek : t.notYet },
+          { label: t.lastAiCall, value: formatLastAiCall(snapshot, language, t) },
+          { label: t.outboundData, value: snapshot.settings.deepSeek.enabled && !snapshot.settings.strictPrivacy ? t.privacyAiOutboundValue : t.privacyAiDisabled }
+        ]}
+      />
       <Card>
         <CardContent className="grid gap-6 p-5">
           <div>
@@ -1696,6 +1872,29 @@ function PrivacyFact({ label, value }: { label: string; value: string }) {
   );
 }
 
+function TrustStatusSummary({ title, items }: { title: string; items: Array<{ label: string; value: string }> }) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle>{title}</CardTitle>
+      </CardHeader>
+      <CardContent className="grid gap-3 md:grid-cols-4">
+        {items.map((item) => (
+          <div key={item.label} className="rounded-md border bg-muted/20 p-3">
+            <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">{item.label}</p>
+            <p className="mt-1 truncate text-sm font-semibold" title={item.value}>{item.value}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function formatLastAiCall(snapshot: AppSnapshot, language: UiLanguage, t: Text) {
+  const event = [...snapshot.events].reverse().find((item) => item.type.startsWith("deepseek_"));
+  return event ? formatTime(event.createdAt, Date.now(), language) : t.notYet;
+}
+
 function FieldGuideItem({ title, description }: { title: string; description: string }) {
   return (
     <div className="rounded-md border p-3 text-sm">
@@ -1784,14 +1983,14 @@ function TabList({
     <Card className="overflow-hidden">
       <div className="divide-y">
         {tabs.map((tab) => (
-          <TabListRow key={tab.id} tab={tab} refresh={refresh} reason={reasonResolver?.(tab)} reasonVariant={reasonVariant} />
+          <MemoryResultRow key={tab.id} tab={tab} refresh={refresh} reason={reasonResolver?.(tab)} reasonVariant={reasonVariant} />
         ))}
       </div>
     </Card>
   );
 }
 
-function TabListRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemory | RecallResult; refresh: () => Promise<void>; reason?: string; reasonVariant: ReasonVariant }) {
+function MemoryResultRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemory | RecallResult; refresh: () => Promise<void>; reason?: string; reasonVariant: ReasonVariant }) {
   const { language, t } = useI18n();
   const notify = useToast();
   const contentType = enumMeta("contentType", tab.card.contentType, language);
@@ -1847,7 +2046,36 @@ function TabListRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemory | 
           <span className="mx-2 text-border">|</span>
           <span title={readingStatus.description}>{t.readingStatus}: <span className="font-medium text-foreground">{readingStatus.label}</span></span>
         </div>
-        <div className={reasonClassName(reasonVariant)} title={reason ?? buildWhyTip(tab, language)}>{reason ?? buildWhyTip(tab, language)}</div>
+        <ReasonStrip tab={tab} reason={reason} reasonVariant={reasonVariant} />
+      </div>
+    </div>
+  );
+}
+
+function ReasonStrip({ tab, reason, reasonVariant }: { tab: TabMemory | RecallResult; reason?: string; reasonVariant: ReasonVariant }) {
+  const { language, t } = useI18n();
+  if (reasonVariant !== "recall") {
+    return <div className={reasonClassName(reasonVariant)} title={reason ?? buildWhyTip(tab, language)}>{reason ?? buildWhyTip(tab, language)}</div>;
+  }
+  const recall = "matchedCues" in tab ? tab : undefined;
+  const matched = recall?.matchedCues.filter(Boolean).slice(0, 4) ?? [];
+  const aiReason = recall?.aiRankReason || recall?.aiIntent;
+  const behavior = buildBehaviorSignal(tab, language);
+  return (
+    <div className="mt-1 grid gap-1 rounded-md border bg-muted/30 p-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <Badge variant="secondary">{t.matchedBecause}</Badge>
+        <span className="min-w-0 truncate font-medium text-foreground">{matched.length ? matched.join(", ") : enumMeta("contentType", tab.card.contentType, language).label}</span>
+      </div>
+      {aiReason ? (
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+          <Badge variant="outline"><Sparkles className="h-3 w-3" /> {t.aiIntent}</Badge>
+          <span className="min-w-0 truncate">{aiReason}</span>
+        </div>
+      ) : null}
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <Badge variant="outline">{t.behaviorSignals}</Badge>
+        <span className="min-w-0 truncate">{behavior}</span>
       </div>
     </div>
   );
@@ -1882,10 +2110,19 @@ function Favicon({ tab }: { tab: TabMemory | RecallResult }) {
 }
 
 function reasonClassName(variant: ReasonVariant) {
-  const base = "truncate rounded-sm border-l-2 px-2 py-1 font-medium";
-  if (variant === "ghost") return `${base} border-amber-500 bg-amber-500/10 text-amber-800 dark:text-amber-200`;
-  if (variant === "recall") return `${base} border-sky-500 bg-sky-500/10 text-sky-800 dark:text-sky-200`;
+  const base = "truncate rounded-md border px-2 py-1 font-medium";
+  if (variant === "ghost") return `${base} border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200`;
+  if (variant === "recall") return `${base} border-sky-500/30 bg-sky-500/10 text-sky-800 dark:text-sky-200`;
   return "truncate text-muted-foreground/85";
+}
+
+function buildBehaviorSignal(tab: TabMemory | RecallResult, language: UiLanguage) {
+  const minutes = Math.round(tab.signals.activeMs / 60000);
+  const parts = language === "zh"
+    ? [`停留 ${minutes} 分钟`, `返回 ${tab.signals.activationCount} 次`, `滚动 ${tab.signals.maxScrollPercent}%`]
+    : [`${minutes} min active`, `${tab.signals.activationCount} returns`, `${tab.signals.maxScrollPercent}% scroll`];
+  if (tab.signals.copiedTextCount > 0) parts.push(language === "zh" ? "复制过内容" : "copied from page");
+  return parts.join(" · ");
 }
 
 function isLowContrastFavicon(image: HTMLImageElement) {

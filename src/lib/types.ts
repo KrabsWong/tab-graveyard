@@ -221,6 +221,7 @@ export type ExtensionRequest =
   | { type: "splitSession"; sessionId: string; tabIds: string[] }
   | { type: "mergeSessions"; sessionIds: string[]; name?: string }
   | { type: "previewArchive" }
+  | { type: "cancelArchivePreview" }
   | { type: "confirmArchivePreview"; previewId: string }
   | { type: "contentSignal"; tabId?: number; url: string; signal: Partial<BehaviorSignals> }
   | { type: "resurfaceAction"; tabIds: string[]; action: "shown" | "dismissed" | "opened" }

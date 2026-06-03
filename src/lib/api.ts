@@ -20,6 +20,10 @@ export function previewArchive() {
   return sendMessage<AppSnapshot>({ type: "previewArchive" });
 }
 
+export function cancelArchivePreview() {
+  return sendMessage<AppSnapshot>({ type: "cancelArchivePreview" });
+}
+
 export function confirmArchivePreview(previewId: string) {
   return sendMessage<AppSnapshot>({ type: "confirmArchivePreview", previewId });
 }
