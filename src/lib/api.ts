@@ -1,4 +1,4 @@
-import type { AppSnapshot, DeepSeekEnhanceResult, ExtensionRequest, ExtensionResponse, GraveyardState, RecallResult, Settings, TabInfoCard } from "@/lib/types";
+import type { AppSnapshot, DeepSeekEnhanceResult, ExtensionRequest, ExtensionResponse, GraveyardState, RecallResult, RecallSynthesisResult, Settings, TabInfoCard } from "@/lib/types";
 import { createDemoState, createSnapshot, isExtensionRuntime, recallTabs } from "@/lib/memory";
 
 export async function sendMessage<T>(request: ExtensionRequest): Promise<T> {
@@ -54,6 +54,10 @@ export function mergeSessions(sessionIds: string[], name?: string) {
 
 export function recall(query: string, filters = {}) {
   return sendMessage<RecallResult[]>({ type: "recall", query, filters });
+}
+
+export function summarizeRecall(query: string, tabIds?: string[], sessionId?: string) {
+  return sendMessage<RecallSynthesisResult>({ type: "summarizeRecall", query, tabIds, sessionId });
 }
 
 export function saveSettings(settings: Partial<Settings>) {

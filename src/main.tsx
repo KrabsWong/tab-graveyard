@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { Archive, ArrowLeft, ArrowUpRight, Copy, Download, Edit3, Eye, EyeOff, FileUp, Ghost, HelpCircle, History, Layers, RotateCcw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import "./styles.css";
-import { archiveGhosts, clearData, confirmArchivePreview, enhanceWithDeepSeek, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, testDeepSeek, undoArchive, updateTabCard } from "@/lib/api";
+import { archiveGhosts, clearData, confirmArchivePreview, enhanceWithDeepSeek, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, summarizeRecall, testDeepSeek, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
-import type { AppSnapshot, BrowseGroupMode, LanguageMode, RecallFilters, RecallResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
+import type { AppSnapshot, BrowseGroupMode, LanguageMode, RecallFilters, RecallResult, RecallSynthesisResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,13 @@ const messages = {
     popupGhostTop: "Ghost Top 10",
     emptyList: "No items yet.",
     searching: "Searching...",
+    summarizeTabs: "Summarize tabs",
+    summarizingTabs: "Summarizing...",
+    summaryFailed: "Summary failed",
+    aiSummary: "AI summary",
+    researchGaps: "Gaps",
+    aiCues: "AI cues",
+    aiRecallFallback: "AI Recall fell back to local search",
     resurfaceHint: "Resurface: related archived pages will appear while you browse.",
     undoArchive: "Undo last archive",
     archiveGhostTabs: "Archive {count} Ghost Tabs",
@@ -247,6 +254,13 @@ const messages = {
     popupGhostTop: "幽灵标签 Top 10",
     emptyList: "暂无内容。",
     searching: "搜索中...",
+    summarizeTabs: "总结这组标签",
+    summarizingTabs: "总结中...",
+    summaryFailed: "总结失败",
+    aiSummary: "AI 摘要",
+    researchGaps: "缺口",
+    aiCues: "AI 线索",
+    aiRecallFallback: "AI 找回已回退到本地搜索",
     resurfaceHint: "主动唤醒：浏览时会提示相关的归档页面。",
     undoArchive: "撤销上次归档",
     archiveGhostTabs: "归档 {count} 个幽灵标签",
@@ -559,6 +573,10 @@ function resolveTheme(mode: ThemeMode) {
 
 function interpolate(template: string, values: Record<string, string | number>) {
   return Object.entries(values).reduce((text, [key, value]) => text.replace(`{${key}}`, String(value)), template);
+}
+
+function canUseAiFeatures(settings: SettingsType) {
+  return settings.deepSeek.enabled && settings.aiMode !== "local-only" && !settings.strictPrivacy && Boolean(settings.deepSeek.apiKey.trim());
 }
 
 type EnumKind = "source" | "contentType" | "importance" | "readingStatus" | "aiMode" | "archiveTrust" | "time" | "theme";
@@ -977,6 +995,19 @@ function TabCount({ value }: { value: number }) {
 
 function RecallSynthesis({ query, results, snapshot, isSearching }: { query: string; results: RecallResult[]; snapshot: AppSnapshot; isSearching: boolean }) {
   const { language, t } = useI18n();
+  const [synthesis, setSynthesis] = useState<RecallSynthesisResult | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const aiAvailable = canUseAiFeatures(snapshot.settings);
+  const aiCues = results.find((tab) => tab.aiCues?.length)?.aiCues?.slice(0, 8) ?? [];
+  const clarifications = results.find((tab) => tab.aiClarifications?.length)?.aiClarifications?.slice(0, 3) ?? [];
+  const fallbackReason = results.find((tab) => tab.aiRecallStatus === "fallback")?.aiFallbackReason;
+
+  useEffect(() => {
+    setSynthesis(null);
+    setSummaryError(null);
+  }, [query, results.map((tab) => tab.id).join("|")]);
+
   if (!query.trim()) return null;
   if (isSearching) {
     return (
@@ -987,18 +1018,91 @@ function RecallSynthesis({ query, results, snapshot, isSearching }: { query: str
   }
   const topTopics = Array.from(new Set(results.flatMap((tab) => tab.card.topics))).slice(0, 4);
   const topSources = Array.from(new Set(results.map((tab) => enumMeta("source", tab.card.source, language).label))).slice(0, 3);
-  const clarifications = ["twitter", "repo", "article", "yesterday", "pricing", "AI"].filter((cue) => !query.toLowerCase().includes(cue.toLowerCase())).slice(0, 2);
   return (
-    <div className="flex min-h-9 self-start flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-muted/20 px-3 py-2 text-sm">
-      <span className="font-medium">{results.length ? `${results.length} ${t.memoryMatch}` : t.noResults}</span>
-      <span className="min-w-0 truncate text-muted-foreground">
-        {results.length
-          ? `${topTopics.join(", ") || "general"} · ${topSources.join(", ") || "mixed"} · ${results.filter((tab) => tab.archived).length} archived`
-          : `Memory contains ${snapshot.tabs.length} tabs.`}
-      </span>
-      {clarifications.map((cue) => <Badge key={cue} variant="outline">{cue}</Badge>)}
+    <div className="grid gap-2">
+      <div className="flex min-h-9 self-start flex-wrap items-center gap-x-3 gap-y-1 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+        <span className="font-medium">{results.length ? `${results.length} ${t.memoryMatch}` : t.noResults}</span>
+        <span className="min-w-0 truncate text-muted-foreground">
+          {results.length
+            ? `${topTopics.join(", ") || "general"} · ${topSources.join(", ") || "mixed"} · ${results.filter((tab) => tab.archived).length} archived`
+            : `Memory contains ${snapshot.tabs.length} tabs.`}
+        </span>
+        {aiCues.length ? <span className="font-medium text-muted-foreground">{t.aiCues}</span> : null}
+        {aiCues.map((cue) => <Badge key={`${cue.type}-${cue.value}`} variant="outline">{formatRecallCue(cue, language)}</Badge>)}
+        {!aiCues.length ? clarifications.map((cue) => <Badge key={cue} variant="outline">{cue}</Badge>) : null}
+        {aiAvailable && results.length ? (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7"
+            disabled={isSummarizing}
+            onClick={async () => {
+              setIsSummarizing(true);
+              setSummaryError(null);
+              try {
+                setSynthesis(await summarizeRecall(query, results.slice(0, 24).map((tab) => tab.id)));
+              } catch (error) {
+                setSummaryError(error instanceof Error ? error.message : t.summaryFailed);
+              } finally {
+                setIsSummarizing(false);
+              }
+            }}
+          >
+            <Sparkles className="h-3.5 w-3.5" /> {isSummarizing ? t.summarizingTabs : t.summarizeTabs}
+          </Button>
+        ) : null}
+      </div>
+      {fallbackReason ? <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">{t.aiRecallFallback}: {fallbackReason}</div> : null}
+      {results[0]?.aiRankReason ? <div className="rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm text-sky-900 dark:text-sky-100">{results[0].aiRankReason}</div> : null}
+      {summaryError ? <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">{summaryError}</div> : null}
+      {synthesis ? <RecallSummaryCard synthesis={synthesis} /> : null}
     </div>
   );
+}
+
+function RecallSummaryCard({ synthesis }: { synthesis: RecallSynthesisResult }) {
+  const { t } = useI18n();
+  return (
+    <div className="grid gap-2 rounded-md border bg-card p-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <Sparkles className="h-4 w-4 text-primary" />
+        <span className="font-medium">{t.aiSummary}</span>
+        <span className="text-muted-foreground">{synthesis.tabCount} {t.tabs}</span>
+        {synthesis.topics.map((topic) => <Badge key={topic} variant="secondary">{topic}</Badge>)}
+      </div>
+      <p className="text-muted-foreground">{synthesis.summary}</p>
+      {synthesis.bullets.length ? (
+        <ul className="grid gap-1">
+          {synthesis.bullets.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      ) : null}
+      {synthesis.gaps.length ? (
+        <div className="grid gap-1 text-muted-foreground">
+          <span className="font-medium text-foreground">{t.researchGaps}</span>
+          {synthesis.gaps.map((item) => <span key={item}>{item}</span>)}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function formatRecallCue(cue: NonNullable<RecallResult["aiCues"]>[number], language: UiLanguage) {
+  const labels: Record<typeof cue.type, { en: string; zh: string }> = {
+    time: { en: "Time", zh: "时间" },
+    source: { en: "Source", zh: "来源" },
+    domain: { en: "Domain", zh: "域名" },
+    topic: { en: "Topic", zh: "主题" },
+    entity: { en: "Entity", zh: "实体" },
+    contentType: { en: "Type", zh: "类型" },
+    readingStatus: { en: "Reading", zh: "阅读" },
+    importance: { en: "Importance", zh: "重要度" },
+    task: { en: "Task", zh: "任务" },
+    visual: { en: "Visual", zh: "视觉" },
+    keyword: { en: "Keyword", zh: "关键词" }
+  };
+  const typeLabel = labels[cue.type][language];
+  const value = cue.value || cue.label;
+  return `${typeLabel}: ${value}`;
 }
 
 function GhostTabsPanel({ snapshot, tabs, refresh }: { snapshot: AppSnapshot; tabs: TabMemory[]; refresh: () => Promise<void> }) {
@@ -1103,9 +1207,14 @@ function GraveyardBrowser({ tabs, refresh }: { tabs: TabMemory[]; refresh: () =>
 function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapshot: AppSnapshot; sessions: AppSnapshot["sessions"]; visibleTabIds?: Set<string>; refresh: () => Promise<void> }) {
   const { language, t } = useI18n();
   const [expanded, setExpanded] = useState<string[]>([]);
+  const [summaries, setSummaries] = useState<Record<string, RecallSynthesisResult>>({});
+  const [summarizingSession, setSummarizingSession] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const aiAvailable = canUseAiFeatures(snapshot.settings);
   const toggleExpanded = (id: string) => setExpanded((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
   return (
     <div className="overflow-hidden rounded-md border">
+      {summaryError ? <div className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">{summaryError}</div> : null}
       {sessions.map((session) => {
         const sessionTabs = snapshot.tabs
           .filter((tab) => session.tabIds.includes(tab.id) && (!visibleTabIds || visibleTabIds.has(tab.id)))
@@ -1122,12 +1231,38 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
               </span>
             </button>
             <div className="flex shrink-0 flex-wrap gap-2">
+                {aiAvailable && sessionTabs.length ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={summarizingSession === session.id}
+                    onClick={async () => {
+                      setSummarizingSession(session.id);
+                      setSummaryError(null);
+                      try {
+                        const summary = await summarizeRecall(session.name, undefined, session.id);
+                        setSummaries((prev) => ({ ...prev, [session.id]: summary }));
+                      } catch (error) {
+                        setSummaryError(error instanceof Error ? error.message : t.summaryFailed);
+                      } finally {
+                        setSummarizingSession(null);
+                      }
+                    }}
+                  >
+                    <Sparkles className="h-4 w-4" /> {summarizingSession === session.id ? t.summarizingTabs : t.summarizeTabs}
+                  </Button>
+                ) : null}
                 <RenameSessionButton sessionId={session.id} currentName={session.name} refresh={refresh} />
                 <Button size="sm" onClick={() => restoreSession(session.id)}>
                   <ArrowUpRight className="h-4 w-4" /> {t.restoreGroup}
                 </Button>
             </div>
           </div>
+          {summaries[session.id] ? (
+            <div className="border-t bg-background p-3">
+              <RecallSummaryCard synthesis={summaries[session.id]} />
+            </div>
+          ) : null}
           {expanded.includes(session.id) ? (
             <div className="border-t bg-muted/20 p-3">
               <TabList tabs={sessionTabs} refresh={refresh} />

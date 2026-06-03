@@ -14,13 +14,12 @@ import {
   isBlacklisted,
   isGhostTab,
   isVisibleTab,
-  matchesOriginalQuery,
   mergeTab,
   normalizeState,
   recallTabs,
   setState
 } from "@/lib/memory";
-import type { ContentType, ExtensionRequest, ExtensionResponse, GraveyardState, Importance, ReadingStatus, RecallFilters, SourceType, TabInfoCard, TabMemory } from "@/lib/types";
+import type { ContentType, ExtensionRequest, ExtensionResponse, GraveyardState, Importance, ReadingStatus, RecallCue, RecallFilters, RecallResult, RecallSynthesisResult, SourceType, TabInfoCard, TabMemory } from "@/lib/types";
 
 const UNDO_MS = 5_000;
 const activeStartedByTabId = new Map<number, number>();
@@ -146,6 +145,8 @@ async function handleMessage(request: ExtensionRequest) {
       return recordCopiedUrl(request.url);
     case "recall":
       return recallWithDeepSeek(request.query, request.filters);
+    case "summarizeRecall":
+      return summarizeRecallWithDeepSeek(request.query, request.tabIds, request.sessionId);
     case "saveSettings":
       return mutate((state) =>
         addEvent(
@@ -810,16 +811,64 @@ async function recallWithDeepSeek(query: string, filters?: RecallFilters) {
   }
 
   try {
-    const expansion = await expandRecallQuery(state, query);
-    const expandedQuery = [query, ...expansion.terms, ...expansion.bilingualTerms].join(" ");
-    return recallTabs(tabs, expandedQuery, {
+    const plan = await planRecallQuery(state, query);
+    const intent = buildRecallIntent(query, plan);
+    const expandedQuery = [query, intent.primary, ...intent.phrases, ...plan.terms, ...plan.bilingualTerms, ...plan.cues.map((cue) => `${cue.label} ${cue.value}`)].join(" ");
+    const localResults = recallTabs(tabs, expandedQuery, {
       ...filters,
-      source: filters?.source && filters.source !== "all" ? filters.source : expansion.source ?? filters?.source,
-      contentType: filters?.contentType && filters.contentType !== "all" ? filters.contentType : expansion.contentType ?? filters?.contentType
-    }).filter((result) => matchesOriginalQuery(result, query));
-  } catch {
-    return recallTabs(tabs, query, filters);
+      time: filters?.time && filters.time !== "all" ? filters.time : plan.time ?? filters?.time,
+      source: filters?.source,
+      contentType: filters?.contentType && filters.contentType !== "all" ? filters.contentType : plan.contentType ?? filters?.contentType
+    });
+    const candidates = prioritizeIntentCandidates(localResults.length ? localResults : recallTabs(tabs, query, filters), intent).slice(0, 30);
+    if (!candidates.length) return [];
+    return rerankRecallResults(state, query, candidates, plan, intent);
+  } catch (error) {
+    const reason = formatAiFallbackReason(error);
+    await setState(addEvent(state, "deepseek_recall_fallback", { reason, query: query.slice(0, 80) }));
+    return recallTabs(tabs, query, filters).map((tab) => ({ ...tab, aiRecallStatus: "fallback" as const, aiFallbackReason: reason }));
   }
+}
+
+async function summarizeRecallWithDeepSeek(query: string, tabIds?: string[], sessionId?: string): Promise<RecallSynthesisResult> {
+  const state = await getState();
+  if (!canUseDeepSeek(state)) throw new Error("DeepSeek is disabled by AI mode or strict privacy mode.");
+
+  const idSet = new Set(tabIds ?? []);
+  const tabs = getVisibleTabs(state.tabs, state.settings)
+    .filter((tab) => (sessionId ? tab.sessionId === sessionId : true))
+    .filter((tab) => (!idSet.size ? true : idSet.has(tab.id)))
+    .slice(0, 24);
+  if (!tabs.length) throw new Error("No visible tabs to summarize.");
+
+  const payload = await deepSeekJson<DeepSeekSynthesis>(
+    state,
+    "You summarize a user's browser-memory tabs. Return compact JSON only.",
+    `User request: ${query || "Summarize this browser session."}
+Tabs:
+${tabs.map(formatTabForDeepSeek).join("\n")}
+
+Return JSON:
+{
+  "summary": "one concise synthesis",
+  "bullets": ["specific finding"],
+  "gaps": ["missing angle or useful next research step"],
+  "topics": ["topic"]
+}
+Use only the provided tab metadata and behavior signals. Do not claim page-body facts that are not present.`,
+    700
+  );
+
+  const result = {
+    summary: stringOr(payload.summary, ""),
+    bullets: cleanStringArray(payload.bullets).slice(0, 5),
+    gaps: cleanStringArray(payload.gaps).slice(0, 3),
+    topics: cleanStringArray(payload.topics).slice(0, 5),
+    tabCount: tabs.length,
+    generatedAt: Date.now()
+  };
+  await setState(addEvent(state, "deepseek_recall_summarized", { tabs: tabs.length, session: sessionId ?? "", query: query.slice(0, 80) }));
+  return result;
 }
 
 async function enhanceWithDeepSeek() {
@@ -867,28 +916,73 @@ async function enhanceWithDeepSeek() {
   return { enhancedTabs, renamedSessions };
 }
 
-async function expandRecallQuery(state: GraveyardState, query: string) {
-  const payload = await deepSeekJson<DeepSeekQueryExpansion>(
+async function planRecallQuery(state: GraveyardState, query: string): Promise<DeepSeekRecallPlanClean> {
+  const payload = await deepSeekJson<DeepSeekRecallPlan>(
     state,
-    "You expand browser-memory recall queries. Return compact JSON only.",
+    "You parse browser-memory recall queries into structured cues. Return compact JSON only.",
     `User query: ${query}
 
 Return JSON:
 {
+  "intent": "the user's complete search intent as one phrase",
+  "intentPhrases": ["compound phrases that must be treated together"],
   "terms": ["short English or URL terms"],
   "bilingualTerms": ["Chinese/English equivalents"],
+  "cues": [{"type": "time|source|domain|topic|entity|contentType|readingStatus|importance|task|visual|keyword", "label": "specific user-facing cue with value", "value": "normalized specific value"}],
+  "time": "today|yesterday|week|last-week|all|null",
   "contentType": "article|video|pdf|tweet|repo|doc|image|saas|null",
-  "source": "twitter|slack|email|search|direct|bookmark|null"
+  "source": "twitter|slack|email|search|direct|bookmark|null",
+  "clarifications": ["short question or option when the query is ambiguous"]
 }
+For cues, never use generic labels like "Company", "Topic", or "Domain" by themselves. Use labels like "Company: Tencent", "Topic: coding plan", "Domain: cloud.tencent.com".
+Preserve compound concepts. For "tencent coding plan", intent should be "Tencent coding plan" and intentPhrases should include "coding plan" and "tencent coding plan"; do not treat these as three independent weak keywords.
 Do not invent private data. Use null when uncertain.`,
-    240
+    420
   );
   return {
+    intent: stringOr(payload.intent, query).slice(0, 120),
+    intentPhrases: cleanStringArray(payload.intentPhrases).slice(0, 8),
     terms: cleanStringArray(payload.terms).slice(0, 10),
     bilingualTerms: cleanStringArray(payload.bilingualTerms).slice(0, 10),
+    cues: cleanRecallCues(payload.cues).slice(0, 10),
+    time: isRecallTime(payload.time) ? payload.time : undefined,
     contentType: isContentType(payload.contentType) ? payload.contentType : undefined,
-    source: isSourceType(payload.source) ? payload.source : undefined
+    source: isSourceType(payload.source) ? payload.source : undefined,
+    clarifications: cleanStringArray(payload.clarifications).slice(0, 3)
   };
+}
+
+async function rerankRecallResults(state: GraveyardState, query: string, candidates: RecallResult[], plan: DeepSeekRecallPlanClean, intent: RecallIntent): Promise<RecallResult[]> {
+  const payload = await deepSeekJson<DeepSeekRerank>(
+    state,
+    "You rerank browser-memory recall candidates. Return compact JSON only.",
+    `User query: ${query}
+Complete intent: ${intent.primary}
+Compound phrases to preserve: ${intent.phrases.join(", ") || "none"}
+Parsed cues: ${plan.cues.map((cue) => `${cue.type}:${cue.label}=${cue.value}`).join(", ") || "none"}
+Candidates:
+${candidates.map((tab, index) => `${index + 1}. id=${tab.id}\n${formatTabForDeepSeek(tab)}`).join("\n")}
+
+Return JSON:
+{
+  "ranked": [{"id": "candidate id", "reason": "brief reason"}]
+}
+Only include candidate ids. Prefer pages matching the complete intent or compound phrases. A page that only matches one generic word must rank below a page matching the whole concept.`,
+    700
+  );
+  const byId = new Map(candidates.map((tab) => [tab.id, tab]));
+  const used = new Set<string>();
+  const ranked = Array.isArray(payload.ranked)
+    ? payload.ranked.flatMap((item) => {
+        const id = typeof item?.id === "string" ? item.id : "";
+        const tab = byId.get(id);
+        if (!tab || used.has(id)) return [];
+        used.add(id);
+        return [{ ...tab, aiRankReason: stringOr(item.reason, ""), aiCues: plan.cues, aiClarifications: plan.clarifications, aiRecallStatus: "enhanced" as const, aiIntent: intent.primary }];
+      })
+    : [];
+  const rest = candidates.filter((tab) => !used.has(tab.id)).map((tab) => ({ ...tab, aiCues: plan.cues, aiClarifications: plan.clarifications, aiRecallStatus: "enhanced" as const, aiIntent: intent.primary }));
+  return [...ranked, ...rest].slice(0, 60);
 }
 
 async function enhanceInfoCard(state: GraveyardState, tab: TabMemory): Promise<TabInfoCard> {
@@ -947,11 +1041,38 @@ Return JSON: { "name": "short session name" }`,
 
 async function deepSeekJson<T>(state: GraveyardState, system: string, user: string, maxTokens: number): Promise<T> {
   const payload = await deepSeekChat(state, [
-    { role: "system", content: `${system} No markdown fences.` },
+    { role: "system", content: `${system} Return one valid JSON object only. No markdown fences, comments, or trailing prose.` },
     { role: "user", content: user }
   ], maxTokens);
   const content = payload.choices?.[0]?.message?.content ?? "{}";
-  return JSON.parse(extractJson(content)) as T;
+  return parseDeepSeekJson<T>(state, content, maxTokens);
+}
+
+async function parseDeepSeekJson<T>(state: GraveyardState, content: string, maxTokens: number): Promise<T> {
+  const extracted = extractJson(content);
+  try {
+    return JSON.parse(extracted) as T;
+  } catch (error) {
+    const repaired = await repairDeepSeekJson(state, extracted, maxTokens, error);
+    return JSON.parse(extractJson(repaired)) as T;
+  }
+}
+
+async function repairDeepSeekJson(state: GraveyardState, brokenJson: string, maxTokens: number, parseError: unknown) {
+  const payload = await deepSeekChat(state, [
+    {
+      role: "system",
+      content: "Repair malformed JSON. Return exactly one valid JSON object. Do not add markdown fences or explanations."
+    },
+    {
+      role: "user",
+      content: `JSON parse error: ${parseError instanceof Error ? parseError.message : String(parseError)}
+
+Malformed JSON:
+${brokenJson.slice(0, 4000)}`
+    }
+  ], Math.max(maxTokens, 500));
+  return payload.choices?.[0]?.message?.content ?? "{}";
 }
 
 async function deepSeekChat(state: GraveyardState, messages: DeepSeekMessage[], maxTokens: number) {
@@ -1023,12 +1144,131 @@ function isSourceType(value: unknown): value is SourceType {
   return typeof value === "string" && ["twitter", "slack", "email", "search", "direct", "bookmark"].includes(value);
 }
 
+function isRecallTime(value: unknown): value is NonNullable<RecallFilters["time"]> {
+  return typeof value === "string" && ["today", "yesterday", "week", "last-week", "all"].includes(value);
+}
+
+function isRecallCueType(value: unknown): value is RecallCue["type"] {
+  return typeof value === "string" && ["time", "source", "domain", "topic", "entity", "contentType", "readingStatus", "importance", "task", "visual", "keyword"].includes(value);
+}
+
+function cleanRecallCues(value: unknown): RecallCue[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const cue = item as Partial<Record<keyof RecallCue, unknown>>;
+    if (!isRecallCueType(cue.type)) return [];
+    const normalized = stringOr(cue.value, "").slice(0, 80);
+    const rawLabel = stringOr(cue.label, "").slice(0, 80);
+    const label = isGenericCueLabel(rawLabel) && normalized ? normalized : rawLabel;
+    if (!label || !normalized) return [];
+    return [{ type: cue.type, label, value: normalized }];
+  });
+}
+
+function isGenericCueLabel(value: string) {
+  return /^(company|topic|domain|entity|source|type|content type|keyword|time|公司|主题|域名|实体|来源|类型|关键词|时间)$/i.test(value.trim());
+}
+
 function isReadingStatus(value: unknown): value is ReadingStatus {
   return typeof value === "string" && ["fully-read", "skimmed", "bounced"].includes(value);
 }
 
 function isImportance(value: unknown): value is Importance {
   return typeof value === "string" && ["must", "should", "maybe", "safe"].includes(value);
+}
+
+function formatTabForDeepSeek(tab: TabMemory) {
+  return [
+    `Title: ${tab.title}`,
+    `URL: ${tab.url}`,
+    `Domain: ${tab.domain}`,
+    `Summary: ${tab.card.summary}`,
+    `Topics: ${tab.card.topics.join(", ")}`,
+    `Entities: ${tab.card.entities.join(", ")}`,
+    `Type: ${tab.card.contentType}`,
+    `Source: ${tab.card.source}`,
+    `Reading: ${tab.card.readingStatus}`,
+    `Importance: ${tab.card.importance}`,
+    `Queries: ${tab.card.possibleQueries.join(", ")}`,
+    `Behavior: active ${Math.round(tab.signals.activeMs / 60000)}m, activations ${tab.signals.activationCount}, scroll ${tab.signals.maxScrollPercent}%, copied ${tab.signals.copiedTextCount}`
+  ].join("\n");
+}
+
+function buildRecallIntent(query: string, plan: DeepSeekRecallPlanClean): RecallIntent {
+  const terms = extractRecallTerms(query);
+  const queryPhrase = terms.join(" ");
+  const queryCompact = terms.join("");
+  const aiPhrases = [plan.intent, ...plan.intentPhrases, ...plan.cues.filter((cue) => cue.type === "topic" || cue.type === "task" || cue.type === "entity").map((cue) => cue.value)];
+  const phraseTerms = aiPhrases.flatMap((phrase) => {
+    const phraseWords = extractRecallTerms(phrase);
+    return phraseWords.length >= 2 ? [phraseWords.join(" "), phraseWords.join("")] : phraseWords;
+  });
+  const adjacent = terms.flatMap((term, index) => {
+    const next = terms[index + 1];
+    return next ? [`${term} ${next}`, `${term}${next}`] : [];
+  });
+  const phrases = Array.from(new Set([queryPhrase, queryCompact, ...adjacent, ...phraseTerms].map((item) => item.trim()).filter((item) => item.length >= 4)));
+  return {
+    primary: plan.intent || queryPhrase || query.trim(),
+    terms,
+    phrases
+  };
+}
+
+function prioritizeIntentCandidates(candidates: RecallResult[], intent: RecallIntent) {
+  const scored = candidates.map((tab, index) => ({ tab, index, fit: scoreIntentFit(tab, intent) }));
+  const hasStrongIntentMatch = scored.some((item) => item.fit >= 8);
+  return scored
+    .filter((item) => !hasStrongIntentMatch || item.fit >= 4)
+    .sort((a, b) => b.fit - a.fit || b.tab.score - a.tab.score || a.index - b.index)
+    .map((item) => ({
+      ...item.tab,
+      score: item.tab.score + item.fit,
+      matchedCues: Array.from(new Set([...item.tab.matchedCues, ...intent.phrases.filter((phrase) => createRecallHaystack(item.tab).includes(phrase)).slice(0, 3)])).slice(0, 8)
+    }));
+}
+
+function scoreIntentFit(tab: TabMemory, intent: RecallIntent) {
+  const haystack = createRecallHaystack(tab);
+  const compactHaystack = haystack.replace(/[^a-z0-9\u4e00-\u9fa5]+/gu, "");
+  const phraseScore = intent.phrases.reduce((score, phrase) => {
+    const compact = phrase.replace(/[^a-z0-9\u4e00-\u9fa5]+/gu, "");
+    if (phrase.includes(" ") && haystack.includes(phrase)) return score + 10;
+    if (compact.length >= 4 && compactHaystack.includes(compact)) return score + 8;
+    if (haystack.includes(phrase)) return score + 5;
+    return score;
+  }, 0);
+  const termScore = intent.terms.reduce((score, term) => (haystack.includes(term) || compactHaystack.includes(term) ? score + 2 : score), 0);
+  return phraseScore + termScore;
+}
+
+function createRecallHaystack(tab: TabMemory) {
+  return [
+    tab.title,
+    tab.url,
+    tab.domain,
+    tab.card.summary,
+    tab.card.taskContext,
+    ...tab.card.topics,
+    ...tab.card.entities,
+    ...tab.card.possibleQueries,
+    ...tab.card.bilingualTopics,
+    ...(tab.card.customTags ?? [])
+  ].join(" ").toLowerCase();
+}
+
+function extractRecallTerms(value: string) {
+  return value
+    .toLowerCase()
+    .split(/[^a-z0-9\u4e00-\u9fa5]+/u)
+    .filter((term) => term.length >= 2 || /^[\u4e00-\u9fa5]$/u.test(term))
+    .slice(0, 8);
+}
+
+function formatAiFallbackReason(error: unknown) {
+  const raw = error instanceof Error ? error.message : String(error);
+  return raw.replace(/\s+/g, " ").slice(0, 180) || "DeepSeek recall failed.";
 }
 
 function escapeOmnibox(value: string) {
@@ -1059,11 +1299,45 @@ type DeepSeekMessage = {
   content: string;
 };
 
-type DeepSeekQueryExpansion = {
+type DeepSeekRecallPlan = {
+  intent?: unknown;
+  intentPhrases?: unknown;
   terms?: unknown;
   bilingualTerms?: unknown;
+  cues?: unknown;
+  time?: unknown;
   contentType?: unknown;
   source?: unknown;
+  clarifications?: unknown;
+};
+
+type DeepSeekRecallPlanClean = {
+  intent: string;
+  intentPhrases: string[];
+  terms: string[];
+  bilingualTerms: string[];
+  cues: RecallCue[];
+  time?: RecallFilters["time"];
+  contentType?: ContentType;
+  source?: SourceType;
+  clarifications: string[];
+};
+
+type RecallIntent = {
+  primary: string;
+  terms: string[];
+  phrases: string[];
+};
+
+type DeepSeekRerank = {
+  ranked?: Array<{ id?: unknown; reason?: unknown }>;
+};
+
+type DeepSeekSynthesis = {
+  summary?: unknown;
+  bullets?: unknown;
+  gaps?: unknown;
+  topics?: unknown;
 };
 
 type DeepSeekInfoCard = {

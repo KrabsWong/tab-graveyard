@@ -164,6 +164,27 @@ export type RecallFilters = {
 export type RecallResult = TabMemory & {
   score: number;
   matchedCues: string[];
+  aiRankReason?: string;
+  aiCues?: RecallCue[];
+  aiClarifications?: string[];
+  aiRecallStatus?: "enhanced" | "fallback";
+  aiFallbackReason?: string;
+  aiIntent?: string;
+};
+
+export type RecallCue = {
+  type: "time" | "source" | "domain" | "topic" | "entity" | "contentType" | "readingStatus" | "importance" | "task" | "visual" | "keyword";
+  label: string;
+  value: string;
+};
+
+export type RecallSynthesisResult = {
+  summary: string;
+  bullets: string[];
+  gaps: string[];
+  tabCount: number;
+  topics: string[];
+  generatedAt: number;
 };
 
 export type GraveyardGroup = {
@@ -205,6 +226,7 @@ export type ExtensionRequest =
   | { type: "resurfaceAction"; tabIds: string[]; action: "shown" | "dismissed" | "opened" }
   | { type: "copyUrlTrigger"; url: string }
   | { type: "recall"; query: string; filters?: RecallFilters }
+  | { type: "summarizeRecall"; query: string; tabIds?: string[]; sessionId?: string }
   | { type: "saveSettings"; settings: Partial<Settings> }
   | { type: "exportData" }
   | { type: "importData"; state: GraveyardState }
