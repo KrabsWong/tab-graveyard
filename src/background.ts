@@ -138,7 +138,7 @@ async function handleMessage(request: ExtensionRequest) {
   switch (request.type) {
     case "getSnapshot":
       await recordOpenTabs();
-      return createSnapshot(await getState());
+      return refreshSessionsSnapshot();
     case "archiveGhosts":
       return archiveGhosts();
     case "previewArchive":
@@ -151,10 +151,10 @@ async function handleMessage(request: ExtensionRequest) {
       return undoArchive();
     case "restoreTab":
       await restoreTab(request.tabId, request.inWindow);
-      return createSnapshot(await getState());
+      return refreshSessionsSnapshot();
     case "restoreSession":
       await restoreSession(request.sessionId);
-      return createSnapshot(await getState());
+      return refreshSessionsSnapshot();
     case "deleteTab":
       return mutate((state) => addEvent({ ...state, tabs: state.tabs.filter((tab) => tab.id !== request.tabId) }, "tab_deleted"));
     case "updateTabCard":
@@ -224,6 +224,12 @@ async function handleMessage(request: ExtensionRequest) {
 
 async function mutate(updater: (state: GraveyardState) => GraveyardState) {
   const next = ensureSessions(updater(await getState()));
+  await setState(next);
+  return createSnapshot(next);
+}
+
+async function refreshSessionsSnapshot() {
+  const next = ensureSessions(await getState());
   await setState(next);
   return createSnapshot(next);
 }
@@ -626,7 +632,7 @@ async function recordCopiedUrl(url: string) {
 }
 
 async function restoreSession(sessionId: string) {
-  const state = await getState();
+  const state = ensureSessions(await getState());
   const tabs = getVisibleTabs(state.tabs, state.settings).filter((tab) => tab.sessionId === sessionId);
   if (!tabs.length) return;
   const win = await chrome.windows.create({ url: tabs.map((tab) => tab.url), focused: true });

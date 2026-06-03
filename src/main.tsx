@@ -50,6 +50,8 @@ const messages = {
     summaryReady: "Summary ready",
     summaryStale: "Summary may be outdated",
     regenerateSummary: "Regenerate",
+    summaryScope: "Scope",
+    summaryHighlights: "Key observations",
     summarySourceNote: "Based on tab metadata and behavior signals, not page-body content.",
     summaryPendingTitle: "Generating browser-context summary",
     summaryPendingDescription: "Tab Graveyard is reading the selected tabs, behavior signals, and local info cards.",
@@ -113,9 +115,11 @@ const messages = {
     continueTitle: "Continue Where You Left Off",
     continueDescription: "Recently active tabs remain one click away.",
     activeSessions: "Active Sessions",
-    sessionsDescription: "Conservative groups based on time, window, source, and topic.",
+    sessionsDescription: "Conservative task groups based on topic, entity, source, and time proximity.",
     tabs: "tabs",
     tabLabels: "Tags:",
+    sessionSource: "Mostly:",
+    sessionTime: "Time:",
     lastActive: "last active",
     restore: "Restore",
     restoreGroup: "Restore group",
@@ -311,6 +315,8 @@ const messages = {
     summaryReady: "摘要已生成",
     summaryStale: "摘要可能已过期",
     regenerateSummary: "重新生成",
+    summaryScope: "依据范围",
+    summaryHighlights: "关键观察",
     summarySourceNote: "基于标签元数据和行为信号，不是页面正文总结。",
     summaryPendingTitle: "正在生成浏览上下文摘要",
     summaryPendingDescription: "Tab Graveyard 正在读取这组标签、行为信号和本地信息卡。",
@@ -374,9 +380,11 @@ const messages = {
     continueTitle: "继续上次浏览",
     continueDescription: "最近活跃的标签会保留在这里，方便一键回到现场。",
     activeSessions: "活跃会话",
-    sessionsDescription: "基于时间、窗口、来源和主题保守分组。",
+    sessionsDescription: "基于主题、实体、来源和时间接近度的保守任务分组。",
     tabs: "个标签",
     tabLabels: "标签：",
+    sessionSource: "主要来源：",
+    sessionTime: "时间：",
     lastActive: "最近活跃",
     restore: "恢复",
     restoreGroup: "恢复整组",
@@ -1298,24 +1306,37 @@ function RecallSynthesis({ query, results, snapshot, isSearching }: { query: str
 function RecallSummaryCard({ synthesis }: { synthesis: RecallSynthesisResult }) {
   const { t } = useI18n();
   return (
-    <div className="grid gap-2 rounded-md border bg-card p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-        <span className="font-medium">{t.summaryReady}</span>
-        <span className="text-muted-foreground">{synthesis.tabCount} {t.tabs}</span>
-        {synthesis.topics.map((topic) => <Badge key={topic} variant="secondary">{topic}</Badge>)}
+    <div className="grid gap-3 rounded-md bg-emerald-50/60 p-4 text-sm dark:bg-emerald-400/10">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-1.5 font-medium text-foreground/75">
+          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+          {t.summaryReady}
+        </span>
+        <span>{synthesis.tabCount} {t.tabs}</span>
+        {synthesis.topics.length ? (
+          <span className="truncate">{synthesis.topics.join(", ")}</span>
+        ) : null}
+        <span className="min-w-0 flex-1 truncate text-right">{t.summarySourceNote}</span>
       </div>
-      <p className="text-xs text-muted-foreground">{t.summarySourceNote}</p>
-      <p className="text-muted-foreground">{synthesis.summary}</p>
-      {synthesis.bullets.length ? (
-        <ul className="grid gap-1">
-          {synthesis.bullets.map((item) => <li key={item}>{item}</li>)}
-        </ul>
-      ) : null}
-      {synthesis.gaps.length ? (
-        <div className="grid gap-1 text-muted-foreground">
-          <span className="font-medium text-foreground">{t.researchGaps}</span>
-          {synthesis.gaps.map((item) => <span key={item}>{item}</span>)}
+      <p className="text-base leading-7 text-foreground">{synthesis.summary}</p>
+      {synthesis.bullets.length || synthesis.gaps.length ? (
+        <div className="grid gap-3 rounded-md border bg-muted/30 px-3 py-3">
+          {synthesis.bullets.length ? (
+            <div className="grid gap-1.5">
+              <div className="text-xs font-semibold text-muted-foreground">{t.summaryHighlights}</div>
+              <ul className="grid gap-1.5">
+                {synthesis.bullets.map((item) => <li key={item} className="text-sm leading-6 text-muted-foreground">{item}</li>)}
+              </ul>
+            </div>
+          ) : null}
+          {synthesis.gaps.length ? (
+            <div className="grid gap-1.5">
+              <div className="text-xs font-semibold text-muted-foreground">{t.researchGaps}</div>
+              <ul className="grid gap-1.5">
+                {synthesis.gaps.map((item) => <li key={item} className="text-sm leading-6 text-muted-foreground">{item}</li>)}
+              </ul>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -1443,8 +1464,7 @@ function buildGhostReason(tab: TabMemory | RecallResult, snapshot: AppSnapshot, 
 function buildRecallReason(tab: TabMemory | RecallResult, language: UiLanguage, t: Text) {
   const matchedCues = "matchedCues" in tab ? tab.matchedCues.filter(Boolean).slice(0, 5) : [];
   const cues = matchedCues.length ? matchedCues.join(", ") : enumMeta("contentType", tab.card.contentType, language).label;
-  const status = tab.archived ? t.archived : t.active;
-  return `${t.recallReason}: ${t.matchedCues} ${cues} · ${t.status} ${status} · ${buildWhyTip(tab, language).replace(/^为什么显示：|^Why this appears: /, "")}`;
+  return `${t.recallReason}: ${t.matchedCues} ${cues} · ${buildWhyTip(tab, language).replace(/^为什么显示：|^Why this appears: /, "")}`;
 }
 
 function GraveyardBrowser({ tabs, refresh }: { tabs: TabMemory[]; refresh: () => Promise<void> }) {
@@ -1486,8 +1506,9 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
   const [summaryErrors, setSummaryErrors] = useState<Record<string, string>>({});
   const aiAvailable = canUseAiFeatures(snapshot.settings);
   const toggleExpanded = (id: string) => setExpanded((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  const ghostIds = useMemo(() => new Set(snapshot.ghostTabs.map((tab) => tab.id)), [snapshot.ghostTabs]);
   return (
-    <div className="overflow-hidden rounded-md border">
+    <div className="grid gap-2">
       {sessions.map((session) => {
         const sessionTabs = snapshot.tabs
           .filter((tab) => session.tabIds.includes(tab.id) && (!visibleTabIds || visibleTabIds.has(tab.id)))
@@ -1497,24 +1518,37 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
         const visibleSessionSummary = isSummarizingThisSession ? undefined : sessionSummary;
         const summaryStale = Boolean(session.aiSummary && session.aiSummarySourceHash && session.aiSummarySourceHash !== buildSessionSummarySourceHash(sessionTabs));
         const isExpanded = expanded.includes(session.id);
+        const secondaryTopics = session.topics.filter((topic) => !sessionNameContainsTopic(session.name, topic));
         return (
-        <div key={session.id} className="border-b last:border-b-0">
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <button className="min-w-0 flex-1 text-left" onClick={() => toggleExpanded(session.id)}>
+        <div key={session.id} className={cn("overflow-hidden rounded-md border bg-background transition-colors", isExpanded ? "shadow-sm ring-1 ring-border/60" : "hover:bg-muted/15")}>
+          <div className={cn("flex items-center justify-between gap-3 px-4 py-3 transition-colors", isExpanded ? "border-b bg-muted/40" : undefined)}>
+            <button className="min-w-0 flex-1 text-left" aria-expanded={isExpanded} onClick={() => toggleExpanded(session.id)}>
               <span className="block truncate text-sm font-medium">
-                {formatSessionTimeRange(session.createdAt, session.updatedAt, language)} · {session.name}
+                {session.name}
               </span>
-              <span className="block truncate text-xs text-muted-foreground">
-                {t.tabLabels} {session.topics.join(", ") || t.continueMetric}
+              <span className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                {secondaryTopics.length ? (
+                  <span className="truncate text-muted-foreground">
+                    {t.tabLabels} <span className="text-foreground/75">{secondaryTopics.join(", ")}</span>
+                  </span>
+                ) : null}
+                <span className="max-w-full truncate rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
+                  {t.sessionSource} {session.sourceHint}
+                </span>
+                <span className="max-w-full truncate rounded border border-border/70 bg-muted/40 px-1.5 py-0.5 text-[11px] leading-none text-muted-foreground">
+                  {t.sessionTime} {formatSessionTimeRange(session.createdAt, session.updatedAt, language)}
+                </span>
               </span>
             </button>
             <div className="flex shrink-0 flex-wrap gap-2">
                 {aiAvailable && sessionTabs.length ? (
                   <AsyncButton
                     variant="outline"
-                    size="sm"
+                    size="icon"
+                    className="h-9 w-9"
+                    title={sessionSummary ? t.regenerateSummary : t.summarizeTabs}
+                    aria-label={sessionSummary ? t.regenerateSummary : t.summarizeTabs}
                     busy={isSummarizingThisSession}
-                    busyLabel={t.summarizingTabs}
 	                    onClick={async () => {
                       setExpanded((prev) => (prev.includes(session.id) ? prev : [...prev, session.id]));
 	                      setSummarizingSession(session.id);
@@ -1535,12 +1569,13 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
                       }
 	                    }}
 	                  >
-                    <Sparkles className="h-4 w-4" /> {sessionSummary ? t.regenerateSummary : t.summarizeTabs}
+                    <Sparkles className="h-4 w-4" />
 	                  </AsyncButton>
                 ) : null}
                 <RenameSessionButton sessionId={session.id} currentName={session.name} refresh={refresh} />
                 <AsyncButton
                   size="sm"
+                  className="h-9"
                   busy={restoringSession === session.id}
                   busyLabel={t.restoreGroup}
                   onClick={async () => {
@@ -1583,8 +1618,8 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
             </div>
           ) : null}
           {isExpanded ? (
-            <div className="border-t bg-muted/20 p-3">
-              <TabList tabs={sessionTabs} refresh={refresh} />
+            <div className="bg-muted/25 p-2 sm:p-3">
+              <TabList tabs={sessionTabs} refresh={refresh} showStatusBadge ghostIds={ghostIds} />
             </div>
           ) : null}
         </div>
@@ -1629,6 +1664,12 @@ function formatSessionTimeRange(createdAt: number, updatedAt: number, language: 
   const sameDay = start.toDateString() === end.toDateString();
   if (sameDay) return `${formatDate(start)} ${formatClock(start)}-${formatClock(end)}`;
   return `${formatDate(start)} ${formatClock(start)} - ${formatDate(end)} ${formatClock(end)}`;
+}
+
+function sessionNameContainsTopic(name: string, topic: string) {
+  const normalizedName = name.toLowerCase();
+  const normalizedTopic = topic.toLowerCase();
+  return normalizedTopic.length > 1 && normalizedName.includes(normalizedTopic);
 }
 
 function formatAbsoluteDateTime(timestamp: number) {
@@ -2276,25 +2317,31 @@ function TabList({
   tabs,
   refresh,
   reasonResolver,
-  reasonVariant = "default"
+  reasonVariant = "default",
+  showStatusBadge,
+  ghostIds
 }: {
   tabs: Array<TabMemory | RecallResult>;
   refresh: () => Promise<void>;
   reasonResolver?: (tab: TabMemory | RecallResult) => string;
   reasonVariant?: ReasonVariant;
+  showStatusBadge?: boolean;
+  ghostIds?: Set<string>;
 }) {
+  const statusKinds = new Set(tabs.map((tab) => tab.archived ? "archived" : ghostIds?.has(tab.id) ? "ghost" : "active"));
+  const shouldShowStatusBadge = showStatusBadge ?? (reasonVariant !== "ghost" && statusKinds.size > 1);
   return (
     <Card className="overflow-hidden">
       <div className="divide-y">
         {tabs.map((tab) => (
-          <MemoryResultRow key={tab.id} tab={tab} refresh={refresh} reason={reasonResolver?.(tab)} reasonVariant={reasonVariant} />
+          <MemoryResultRow key={tab.id} tab={tab} refresh={refresh} reason={reasonResolver?.(tab)} reasonVariant={reasonVariant} showStatusBadge={shouldShowStatusBadge} isGhost={Boolean(ghostIds?.has(tab.id))} />
         ))}
       </div>
     </Card>
   );
 }
 
-function MemoryResultRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemory | RecallResult; refresh: () => Promise<void>; reason?: string; reasonVariant: ReasonVariant }) {
+function MemoryResultRow({ tab, refresh, reason, reasonVariant, showStatusBadge, isGhost }: { tab: TabMemory | RecallResult; refresh: () => Promise<void>; reason?: string; reasonVariant: ReasonVariant; showStatusBadge: boolean; isGhost: boolean }) {
   const { language, t } = useI18n();
   const notify = useToast();
   const [restoring, setRestoring] = useState(false);
@@ -2303,7 +2350,7 @@ function MemoryResultRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemo
   const importance = enumMeta("importance", tab.card.importance, language);
   const source = enumMeta("source", tab.card.source, language);
   const readingStatus = enumMeta("readingStatus", tab.card.readingStatus, language);
-  const statusLabel = reasonVariant === "ghost" ? t.ghostStatus : tab.archived ? t.archived : t.active;
+  const statusLabel = tab.archived ? t.archived : reasonVariant === "ghost" || isGhost ? t.ghostStatus : t.active;
   return (
     <div className="grid min-w-0 gap-3 px-4 py-3 xl:grid-cols-[minmax(420px,1fr)_minmax(360px,0.9fr)] xl:items-center">
       <div className="flex min-w-0 items-start gap-3">
@@ -2353,7 +2400,7 @@ function MemoryResultRow({ tab, refresh, reason, reasonVariant }: { tab: TabMemo
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1">
             <Badge variant="muted" title={contentType.description}>{t.contentType}: {contentType.label}</Badge>
-            <Badge variant={tab.archived || reasonVariant === "ghost" ? "default" : "outline"}>{t.status}: {statusLabel}</Badge>
+            {showStatusBadge ? <Badge variant={tab.archived || isGhost ? "default" : "outline"}>{t.status}: {statusLabel}</Badge> : null}
             <Badge variant="outline" title={importance.description}>{t.importance}: {importance.label}</Badge>
             <EditCardButton tab={tab} refresh={refresh} compact />
           </div>
@@ -2588,7 +2635,7 @@ function RenameSessionButton({ sessionId, currentName, refresh }: { sessionId: s
   const [error, setError] = useState<string | null>(null);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button variant="outline" size="sm">{t.edit}</Button></DialogTrigger>
+      <DialogTrigger asChild><Button variant="outline" size="sm" className="h-9">{t.edit}</Button></DialogTrigger>
       <DialogContent>
         <DialogHeader><DialogTitle>{t.sessions}</DialogTitle></DialogHeader>
         <TextRow label="Name" value={name} onChange={setName} />

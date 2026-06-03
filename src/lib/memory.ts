@@ -156,7 +156,7 @@ export function createTabMemory(tab: chrome.tabs.Tab, existing?: TabMemory, now 
     archivedAt: existing?.archivedAt,
     restored: existing?.restored ?? false,
     restoredAt: existing?.restoredAt,
-    sessionId: existing?.sessionId ?? createSessionId(now, tab.windowId),
+    sessionId: existing?.sessionId ?? createFallbackSessionId(now, tab.windowId),
     card: createInfoCard(title, tab.url, existing?.card),
     signals: {
       ...defaultBehaviorSignals(),
@@ -180,16 +180,20 @@ export function mergeTab(state: GraveyardState, incoming: TabMemory): GraveyardS
 }
 
 export function ensureSessions(state: GraveyardState): GraveyardState {
-  const sessionsById = new Map<string, SessionMemory>();
   const previous = new Map(state.sessions.map((session) => [session.id, session]));
-  for (const tab of state.tabs) {
+  const assignments = inferTaskSessionAssignments(state.tabs, previous);
+  const tabs = state.tabs.map((tab) => ({ ...tab, sessionId: assignments.get(tab.id) ?? createSoloSessionId(tab) }));
+  const sessionsById = new Map<string, SessionMemory>();
+  for (const tab of tabs) {
+    if (tab.sessionId.startsWith("solo-")) continue;
     const existing = sessionsById.get(tab.sessionId);
     const saved = previous.get(tab.sessionId);
     const topics = Array.from(new Set([...(existing?.topics ?? []), ...tab.card.topics])).slice(0, 4);
     const sourceHint = tab.card.source !== "direct" ? tab.card.source : existing?.sourceHint ?? tab.domain;
+    const preservedName = saved?.userNamed || saved?.aiNamed ? saved.name : undefined;
     sessionsById.set(tab.sessionId, {
       id: tab.sessionId,
-      name: saved?.name ?? existing?.name ?? buildSessionName(tab, sourceHint),
+      name: preservedName ?? existing?.name ?? buildSessionName(tab),
       createdAt: Math.min(existing?.createdAt ?? tab.openedAt, tab.openedAt),
       updatedAt: Math.max(existing?.updatedAt ?? tab.lastActivatedAt, tab.lastActivatedAt),
       tabIds: [...(existing?.tabIds ?? []), tab.id],
@@ -202,7 +206,10 @@ export function ensureSessions(state: GraveyardState): GraveyardState {
       aiSummarySourceHash: saved?.aiSummarySourceHash
     });
   }
-  return { ...state, sessions: Array.from(sessionsById.values()).sort((a, b) => b.updatedAt - a.updatedAt) };
+  const sessions = Array.from(sessionsById.values())
+    .filter((session) => session.tabIds.length >= 2 || Boolean(session.userNamed))
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  return { ...state, tabs, sessions };
 }
 
 export function isGhostTab(tab: TabMemory, settings: Settings, now = Date.now()) {
@@ -540,7 +547,10 @@ function sameText(left: string, right?: string) {
 }
 
 function groupKeys(tab: TabMemory, mode: BrowseGroupMode, language: "en" | "zh") {
-  if (mode === "session") return [{ key: tab.sessionId, label: tab.sessionId }];
+  if (mode === "session") {
+    if (tab.sessionId.startsWith("solo-")) return [{ key: "unsessioned", label: language === "zh" ? "未形成任务会话" : "No task session" }];
+    return [{ key: tab.sessionId, label: tab.sessionId }];
+  }
   if (mode === "source") return [{ key: tab.card.source, label: tab.card.source }];
   if (mode === "entity") {
     const entities = tab.card.entities.length ? tab.card.entities : [tab.domain];
@@ -632,14 +642,109 @@ function extractSearchTerms(text: string) {
   });
 }
 
-function buildSessionName(tab: TabMemory, sourceHint: string) {
+function buildSessionName(tab: TabMemory) {
   const topic = tab.card.topics[0] ?? "browsing";
-  return `${topic} · mostly ${sourceHint}`;
+  return topic;
 }
 
-function createSessionId(now: number, windowId?: number) {
+type SessionCandidate = {
+  key: string;
+  strength: number;
+  tabs: TabMemory[];
+};
+
+const TASK_SESSION_MAX_SPAN_MS = 7 * 24 * 60 * 60 * 1000;
+const GENERIC_SESSION_TERMS = new Set(["reading", "article", "video", "pdf", "tweet", "repo", "doc", "image", "saas", "direct", "search"]);
+
+function inferTaskSessionAssignments(tabs: TabMemory[], previous: Map<string, SessionMemory>) {
+  const assignments = new Map<string, string>();
+  const manualSessionIds = new Set(Array.from(previous.values()).filter((session) => session.userNamed).map((session) => session.id));
+  for (const tab of tabs) {
+    if (manualSessionIds.has(tab.sessionId)) assignments.set(tab.id, tab.sessionId);
+  }
+
+  const candidates = new Map<string, SessionCandidate>();
+  for (const tab of tabs) {
+    if (assignments.has(tab.id)) continue;
+    for (const candidate of taskSessionKeys(tab)) {
+      const existing = candidates.get(candidate.key);
+      if (existing) existing.tabs.push(tab);
+      else candidates.set(candidate.key, { ...candidate, tabs: [tab] });
+    }
+  }
+
+  const validCandidates = Array.from(candidates.values())
+    .map((candidate) => ({ ...candidate, tabs: dedupeTabs(candidate.tabs) }))
+    .filter((candidate) => candidate.tabs.length >= 2 && hasCompactTimeSpan(candidate.tabs))
+    .sort((a, b) => b.strength - a.strength || b.tabs.length - a.tabs.length || latestActivation(b.tabs) - latestActivation(a.tabs));
+
+  for (const candidate of validCandidates) {
+    const available = candidate.tabs.filter((tab) => !assignments.has(tab.id));
+    if (available.length < 2) continue;
+    const sessionId = `task-${hashText(candidate.key)}`;
+    for (const tab of available) assignments.set(tab.id, sessionId);
+  }
+
+  return assignments;
+}
+
+function taskSessionKeys(tab: TabMemory) {
+  const topics = tab.card.topics.map(normalizeSessionTerm).filter(isSpecificSessionTerm).slice(0, 3);
+  const entities = tab.card.entities.map(normalizeSessionTerm).filter(isSpecificSessionTerm).slice(0, 4);
+  const tags = [
+    tab.card.taskContext,
+    ...(tab.card.customTags ?? [])
+  ].map(normalizeSessionTerm).filter(isSpecificSessionTerm).slice(0, 4);
+  const domain = normalizeSessionTerm(tab.domain);
+  const source = normalizeSessionTerm(tab.card.source);
+  const keys: Array<{ key: string; strength: number }> = [];
+
+  for (const tag of tags) keys.push({ key: `task:${tag}`, strength: 5 });
+  for (const entity of entities) {
+    for (const topic of topics) keys.push({ key: `entity-topic:${entity}:${topic}`, strength: 4 });
+  }
+  for (const topic of topics) {
+    keys.push({ key: `domain-topic:${domain}:${topic}`, strength: 3 });
+    if (source !== "direct") keys.push({ key: `source-topic:${source}:${topic}`, strength: 2 });
+  }
+
+  return keys;
+}
+
+function hasCompactTimeSpan(tabs: TabMemory[]) {
+  const times = tabs.map((tab) => tab.openedAt);
+  return Math.max(...times) - Math.min(...times) <= TASK_SESSION_MAX_SPAN_MS;
+}
+
+function latestActivation(tabs: TabMemory[]) {
+  return Math.max(...tabs.map((tab) => tab.lastActivatedAt));
+}
+
+function normalizeSessionTerm(value?: string) {
+  return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function isSpecificSessionTerm(value: string) {
+  if (!value || GENERIC_SESSION_TERMS.has(value)) return false;
+  return value.length >= 2;
+}
+
+function createSoloSessionId(tab: TabMemory) {
+  return `solo-${tab.id}`;
+}
+
+function createFallbackSessionId(now: number, windowId?: number) {
   const bucket = Math.floor(now / (4 * 60 * 60 * 1000));
   return `session-${windowId ?? "w"}-${bucket}`;
+}
+
+function hashText(input: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
 }
 
 function makeId(prefix: string) {
