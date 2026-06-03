@@ -482,29 +482,63 @@ function LogoShowcase({ open, onOpenChange }: { open: boolean; onOpenChange: (op
         aria-label={t.appName}
       >
         <div className="graveyard-dance-scene">
-          <div className="graveyard-animation-layer" aria-hidden="true">
-            <div className="graveyard-sparkle graveyard-sparkle-one" />
-            <div className="graveyard-sparkle graveyard-sparkle-two" />
-            <div className="graveyard-sparkle graveyard-sparkle-three" />
-            <div className="graveyard-folder-dancer">
-              <div className="graveyard-folder-face">
-                <span />
-                <span />
-              </div>
-            </div>
-            <div className="graveyard-stone">
-              <div className="graveyard-tab-mark">
-                <span />
-                <span />
-                <span />
-              </div>
-            </div>
-            <div className="graveyard-base">
-              <span />
-              <span />
-              <span />
-            </div>
-          </div>
+          <svg className="graveyard-animation-layer" viewBox="0 0 360 360" aria-hidden="true">
+            <defs>
+              <radialGradient id="graveyardCollectGlow" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stopColor="#5eead4" stopOpacity="0.2" />
+                <stop offset="58%" stopColor="#5eead4" stopOpacity="0.08" />
+                <stop offset="100%" stopColor="#0f172a" stopOpacity="0" />
+              </radialGradient>
+              <linearGradient id="graveyardTrace" x1="72" x2="288" y1="72" y2="288" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#5eead4" stopOpacity="0" />
+                <stop offset="52%" stopColor="#5eead4" stopOpacity="0.58" />
+                <stop offset="100%" stopColor="#5eead4" stopOpacity="0" />
+              </linearGradient>
+              <filter id="graveyardSoftGlow" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="3" />
+              </filter>
+            </defs>
+            <circle className="graveyard-collect-glow" cx="180" cy="180" r="138" fill="url(#graveyardCollectGlow)" />
+            <g className="graveyard-collect-traces" filter="url(#graveyardSoftGlow)">
+              <path className="trace-one" d="M102 110 C126 102 151 119 168 151 C174 162 178 172 180 180" />
+              <path className="trace-two" d="M263 103 C235 101 211 120 195 151 C189 163 184 173 180 180" />
+              <path className="trace-three" d="M83 236 C111 243 143 224 164 194 C171 184 176 180 180 180" />
+              <path className="trace-four" d="M281 241 C248 247 218 226 197 195 C190 185 184 180 180 180" />
+              <path className="trace-five" d="M184 62 C178 90 181 120 184 151 C185 164 183 174 180 180" />
+            </g>
+            <g className="graveyard-memory-tabs">
+              <g className="graveyard-memory-tab tab-one">
+                <rect x="74" y="94" width="58" height="36" rx="10" />
+                <circle cx="91" cy="112" r="4" />
+                <path d="M102 108 H120 M102 117 H114" />
+              </g>
+              <g className="graveyard-memory-tab tab-two">
+                <rect x="235" y="86" width="56" height="34" rx="10" />
+                <circle cx="251" cy="103" r="4" />
+                <path d="M262 99 H280 M262 108 H274" />
+              </g>
+              <g className="graveyard-memory-tab tab-three">
+                <rect x="55" y="221" width="56" height="34" rx="10" />
+                <circle cx="71" cy="238" r="4" />
+                <path d="M82 234 H99 M82 243 H94" />
+              </g>
+              <g className="graveyard-memory-tab tab-four">
+                <rect x="250" y="226" width="58" height="36" rx="10" />
+                <circle cx="267" cy="244" r="4" />
+                <path d="M278 240 H296 M278 249 H290" />
+              </g>
+              <g className="graveyard-memory-tab tab-five">
+                <rect x="156" y="48" width="56" height="34" rx="10" />
+                <circle cx="172" cy="65" r="4" />
+                <path d="M183 61 H201 M183 70 H195" />
+              </g>
+            </g>
+            <g className="graveyard-memory-sparkles">
+              <circle cx="142" cy="142" r="3" />
+              <circle cx="222" cy="149" r="3" />
+              <circle cx="180" cy="174" r="2.5" />
+            </g>
+          </svg>
           <img src="icons/icon-1024.png" alt={t.appName} className="graveyard-final-logo" />
         </div>
       </button>
