@@ -147,6 +147,8 @@ const messages = {
     resurfacePausedDescription: "Recording is paused, so resurfacing suggestions are also paused.",
     resurfacePausedNotice: "Pause recording is enabled in Privacy & Recording. Resurfacing settings will not take effect until recording is resumed.",
     resumeRecording: "Resume recording",
+    resurfaceIncludeGhosts: "Include Ghost Tabs",
+    resurfaceIncludeGhostsDescription: "Also match long-inactive tabs that are still open. Opening one will focus the existing tab when possible.",
     resurfaceFrequency: "Resurface frequency",
     resurfaceCooldown: "Resurface cooldown",
     archiveTrust: "Archive trust stage",
@@ -348,6 +350,8 @@ const messages = {
     resurfacePausedDescription: "当前已暂停记录，因此主动唤醒也会暂停。",
     resurfacePausedNotice: "隐私与记录中的暂停记录已开启。在恢复记录前，主动唤醒的所有配置都不会生效。",
     resumeRecording: "启动记录",
+    resurfaceIncludeGhosts: "包含幽灵标签",
+    resurfaceIncludeGhostsDescription: "主动唤醒时也匹配仍打开但长时间未活跃的幽灵标签。打开时会尽量切换到原标签页。",
     resurfaceFrequency: "主动唤醒频率",
     resurfaceCooldown: "主动唤醒冷却间隔",
     archiveTrust: "归档信任阶段",
@@ -1266,6 +1270,13 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
               checked={snapshot.settings.resurfaceEnabled}
               disabled={snapshot.settings.recordingPaused}
               onChange={(resurfaceEnabled) => update({ resurfaceEnabled })}
+            />
+            <ToggleRow
+              label={t.resurfaceIncludeGhosts}
+              description={t.resurfaceIncludeGhostsDescription}
+              checked={snapshot.settings.resurfaceRule.includeGhostTabs}
+              disabled={snapshot.settings.recordingPaused || !snapshot.settings.resurfaceEnabled}
+              onChange={(includeGhostTabs) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, includeGhostTabs } })}
             />
             <SelectRow
               label={t.resurfaceFrequency}

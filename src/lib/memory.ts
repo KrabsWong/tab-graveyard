@@ -35,7 +35,8 @@ export const defaultSettings: Settings = {
   resurfaceEnabled: true,
   resurfaceRule: {
     maxPerDay: 3,
-    cooldownHours: 12
+    cooldownHours: 12,
+    includeGhostTabs: false
   },
   archiveTrustStage: "manual",
   archivePreannounce: true,

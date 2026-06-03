@@ -2,7 +2,7 @@ type ResurfaceMessage = {
   type: "TAB_GRAVEYARD_RESURFACE";
   language?: "en" | "zh";
   theme?: "system" | "light" | "dark";
-  tabs: Array<{ id: string; title: string; domain: string; url: string; favIconUrl?: string }>;
+  tabs: Array<{ id: string; title: string; domain: string; url: string; favIconUrl?: string; archived?: boolean }>;
 };
 
 const tabGraveyardWindow = window as Window & { __tabGraveyardContentLoaded?: boolean };
@@ -100,7 +100,7 @@ function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", th
             `}
             <button data-url-index="${index}" style="min-width:0;flex:1;text-align:left;border:0;background:transparent;padding:0;cursor:pointer;color:inherit;">
               <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(tab.title)}</div>
-              <div style="font-size:11px;color:${colors.muted};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(tab.domain)}</div>
+              <div style="font-size:11px;color:${colors.muted};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(tab.domain)} · ${tab.archived ? copy.archived : copy.ghost}</div>
             </button>
             <button data-url-index="${index}" title="${copy.open}" aria-label="${copy.open} ${escapeHtml(tab.title)}" style="flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:6px;border:1px solid ${colors.border};background:${colors.background};color:${colors.foreground};cursor:pointer;">
               <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -121,7 +121,7 @@ function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", th
   const ids = tabs.map((tab) => tab.id);
   const openTabs = (selectedTabs: ResurfaceMessage["tabs"]) => {
     sendRuntimeMessage({ type: "resurfaceAction", tabIds: selectedTabs.map((tab) => tab.id), action: "opened" });
-    selectedTabs.forEach((tab) => sendRuntimeMessage({ type: "openUrl", url: tab.url }));
+    selectedTabs.forEach((tab) => sendRuntimeMessage({ type: "openMemoryTab", tabId: tab.id }));
     root.remove();
   };
   root.querySelectorAll<HTMLButtonElement>("[data-url-index]").forEach((button) => {
@@ -147,6 +147,8 @@ function getResurfaceCopy(language: "en" | "zh", count: number) {
     return {
       subtitle: `你以前看过 ${count} 个相关页面。`,
       open: "打开",
+      archived: "已归档",
+      ghost: "幽灵标签",
       openGraveyard: "打开 Graveyard",
       dismiss: "忽略"
     };
@@ -154,6 +156,8 @@ function getResurfaceCopy(language: "en" | "zh", count: number) {
   return {
     subtitle: `You looked at ${count === 1 ? "1 related page" : `${count} related pages`} before.`,
     open: "Open",
+    archived: "Archived",
+    ghost: "Ghost Tab",
     openGraveyard: "Open Graveyard",
     dismiss: "Dismiss"
   };

@@ -100,6 +100,7 @@ export type ArchivePreview = {
 export type ResurfaceRule = {
   maxPerDay: number;
   cooldownHours: number;
+  includeGhostTabs: boolean;
 };
 
 export type Settings = {
@@ -214,6 +215,7 @@ export type ExtensionRequest =
   | { type: "testDeepSeek" }
   | { type: "enhanceWithDeepSeek" }
   | { type: "openUrl"; url: string }
+  | { type: "openMemoryTab"; tabId: string }
   | { type: "openDashboard" };
 
 export type DeepSeekEnhanceResult = {

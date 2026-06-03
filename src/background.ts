@@ -175,6 +175,9 @@ async function handleMessage(request: ExtensionRequest) {
     case "openUrl":
       await chrome.tabs.create({ url: request.url, active: true });
       return undefined;
+    case "openMemoryTab":
+      await restoreTab(request.tabId);
+      return undefined;
     case "openDashboard":
       await openDashboard();
       return undefined;
@@ -654,7 +657,9 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
     title: tab.title,
     enabled: state.settings.resurfaceEnabled,
     recordingPaused: state.settings.recordingPaused,
-    archivedCount: state.tabs.filter((item) => item.archived).length
+    archivedCount: state.tabs.filter((item) => item.archived).length,
+    includeGhostTabs: state.settings.resurfaceRule.includeGhostTabs,
+    ghostCount: state.tabs.filter((item) => isGhostTab(item, state.settings)).length
   });
   if (!state.settings.resurfaceEnabled) {
     logResurface("skip:disabled", { tabId: tab.id, url });
@@ -680,8 +685,10 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
     return;
   }
   const current = createInfoCard(tab.title || getDomain(url), url);
+  const includeGhostTabs = state.settings.resurfaceRule.includeGhostTabs;
+  const now = Date.now();
   const scored = state.tabs
-    .filter((item) => item.archived && item.url !== url)
+    .filter((item) => item.url !== url && (item.archived || (includeGhostTabs && isGhostTab(item, state.settings, now))))
     .map((item) => ({
       item,
       overlap: item.card.topics.filter((topic) => current.topics.includes(topic)).length + (item.domain === getDomain(url) ? 2 : 0)
@@ -689,11 +696,12 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
   logResurface("matched-candidates", {
     currentDomain: getDomain(url),
     currentTopics: current.topics,
+    includeGhostTabs,
     candidates: scored
       .filter(({ overlap }) => overlap > 0)
       .sort((a, b) => b.overlap - a.overlap)
       .slice(0, 8)
-      .map(({ item, overlap }) => ({ title: item.title, url: item.url, domain: item.domain, topics: item.card.topics, overlap }))
+      .map(({ item, overlap }) => ({ title: item.title, url: item.url, domain: item.domain, archived: item.archived, topics: item.card.topics, overlap }))
   });
   const related = scored
     .filter(({ overlap }) => overlap >= 2)
@@ -721,7 +729,7 @@ async function sendResurfaceMessage(tabId: number, tabs: TabMemory[]) {
     type: "TAB_GRAVEYARD_RESURFACE",
     language,
     theme: state.settings.theme,
-    tabs: tabs.map((item) => ({ id: item.id, title: item.title, domain: item.domain, url: item.url, favIconUrl: item.favIconUrl }))
+    tabs: tabs.map((item) => ({ id: item.id, title: item.title, domain: item.domain, url: item.url, favIconUrl: item.favIconUrl, archived: item.archived }))
   };
   let lastError: unknown;
   for (let attempt = 0; attempt < 4; attempt += 1) {
