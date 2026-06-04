@@ -26,6 +26,9 @@ export type TabInfoCard = {
   userEditedAt?: number;
   aiEnhanced?: boolean;
   aiEnhancedAt?: number;
+  aiEnhancedSource?: "auto" | "manual";
+  aiEnhanceFailedAt?: number;
+  aiEnhanceFailureReason?: string;
 };
 
 export type BehaviorSignals = {
@@ -188,6 +191,7 @@ export type QuickRecallItem = {
   favIconUrl?: string;
   category: "active" | "ghost" | "archived" | "session";
   reason: string;
+  aiEnhanced?: boolean;
 };
 
 export type RecallSynthesisResult = {
@@ -224,6 +228,8 @@ export type AppSnapshot = {
 export type ExtensionRequest =
   | { type: "getSnapshot" }
   | { type: "archiveGhosts" }
+  | { type: "archiveTab"; tabId: string }
+  | { type: "unarchiveTab"; tabId: string }
   | { type: "undoArchive" }
   | { type: "restoreTab"; tabId: string; inWindow?: boolean }
   | { type: "restoreSession"; sessionId: string }

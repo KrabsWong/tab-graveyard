@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, CheckCircle2, Copy, Download, Edit3, Eye, EyeOff, FileUp, Ghost, HelpCircle, History, Layers, Loader2, RotateCcw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
+import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, CheckCircle2, Copy, Download, Edit3, Eye, EyeOff, FileUp, Ghost, History, Layers, Loader2, RotateCcw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
 import "./styles.css";
-import { archiveGhosts, cancelArchivePreview, clearData, confirmArchivePreview, enhanceWithDeepSeek, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, summarizeRecall, testDeepSeek, undoArchive, updateTabCard } from "@/lib/api";
+import { archiveGhosts, archiveTab, cancelArchivePreview, clearData, confirmArchivePreview, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
 import type { AppSnapshot, BrowseGroupMode, LanguageMode, RecallFilters, RecallResult, RecallSynthesisResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -102,6 +102,10 @@ const messages = {
     resurfaceHint: "Resurface: related archived pages will appear while you browse.",
     undoArchive: "Undo last archive",
     archiveGhostTabs: "Archive {count} Ghost Tabs",
+    archiveTab: "Archive",
+    archiveThisTab: "Archive this tab",
+    unarchiveTab: "Unarchive",
+    unarchiveThisTab: "Move back to Recall",
     archiveFailed: "Archive failed",
     openGraveyard: "Open Graveyard",
     continueMetric: "Continue where you left off",
@@ -182,12 +186,6 @@ const messages = {
     dataLog: "Data Log",
     leaderboard: "Leaderboard",
     localOnlyStub: "Local-only prototype: cloud sync and billing are not connected.",
-    fieldGuide: "Field Guide",
-    fieldGuideDescription: "These labels are inferred locally. Edit any card when a label is wrong.",
-    contentTypeGuide: "Type: what kind of page this is, such as article, video, repo, doc, or SaaS.",
-    sourceGuide: "Entry source: how this page entered your browsing flow, usually inferred from URL/referrer signals.",
-    readingGuide: "Reading: fully read means strong reading evidence, skimmed means glanced or partial reading, bounced means quickly left.",
-    importanceGuide: "Importance: must/should/maybe/safe estimates how risky it is to archive the page.",
     memoryMatch: "memory match",
     browserMemoryLocal: "Your browser memory stays local by default.",
     firstRun: "First Run",
@@ -368,6 +366,10 @@ const messages = {
     resurfaceHint: "主动唤醒：浏览时会提示相关的归档页面。",
     undoArchive: "撤销上次归档",
     archiveGhostTabs: "归档 {count} 个幽灵标签",
+    archiveTab: "归档",
+    archiveThisTab: "归档这个标签",
+    unarchiveTab: "取消归档",
+    unarchiveThisTab: "移回找回列表",
     archiveFailed: "归档失败",
     openGraveyard: "打开 Graveyard",
     continueMetric: "继续上次浏览",
@@ -448,12 +450,6 @@ const messages = {
     dataLog: "数据日志",
     leaderboard: "排行榜",
     localOnlyStub: "本地原型：云同步和计费后端未连接。",
-    fieldGuide: "字段说明",
-    fieldGuideDescription: "这些标签由本地规则或 AI 增强推断。如果不准，可以编辑信息卡修正。",
-    contentTypeGuide: "类型：页面内容类别，例如文章、视频、代码仓库、文档或 SaaS 页面。",
-    sourceGuide: "入口来源：页面是如何进入浏览流程的，通常由 URL、referrer 等信号推断。",
-    readingGuide: "阅读：读完表示有较强阅读证据，略读表示只浏览了一部分，跳出表示很快离开。",
-    importanceGuide: "重要度：must/should/maybe/safe 用来估计归档这个页面的风险。",
     memoryMatch: "记忆匹配",
     browserMemoryLocal: "你的浏览记忆默认只保存在本地。",
     firstRun: "首次启动",
@@ -957,7 +953,6 @@ function Workspace({ page, snapshot, refresh }: { page: Page; snapshot: AppSnaps
               </div>
             </div>
             <div className="flex gap-2">
-              <FieldGuideDialog />
               <Button variant="outline" onClick={() => chrome.runtime.openOptionsPage()}>
                 <Settings className="h-4 w-4" /> {t.settings}
               </Button>
@@ -1779,7 +1774,6 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
   const [deepSeekStatus, setDeepSeekStatus] = useState<string | null>(null);
   const [deepSeekStatusKind, setDeepSeekStatusKind] = useState<"success" | "error" | "info">("info");
   const [deepSeekTesting, setDeepSeekTesting] = useState(false);
-  const [deepSeekEnhancing, setDeepSeekEnhancing] = useState(false);
   const [settingsTab, setSettingsTab] = useState("general");
   const [settingsAction, setSettingsAction] = useState<string | null>(null);
   const [settingsStatus, setSettingsStatus] = useState<{ variant: "success" | "error"; title: string; description: string } | null>(null);
@@ -2063,31 +2057,8 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
             >
               {t.deepSeekTest}
             </AsyncButton>
-            <AsyncButton
-              className="w-fit"
-              busy={deepSeekEnhancing}
-              busyLabel={t.deepSeekEnhancing}
-              onClick={async () => {
-                setDeepSeekEnhancing(true);
-                setDeepSeekStatus(null);
-                try {
-                  const result = await enhanceWithDeepSeek();
-                  setDeepSeekStatusKind("success");
-                  setDeepSeekStatus(interpolate(t.deepSeekEnhanceOk, { tabs: result.enhancedTabs, sessions: result.renamedSessions }));
-                  await refresh();
-                } catch (error) {
-                  setDeepSeekStatusKind("error");
-                  setDeepSeekStatus(error instanceof Error ? error.message : String(error));
-                } finally {
-                  setDeepSeekEnhancing(false);
-                }
-              }}
-            >
-              <Sparkles className="h-4 w-4" /> {t.deepSeekEnhance}
-            </AsyncButton>
           </div>
           {deepSeekTesting ? <PendingBlock title={t.testingConnection} description={t.deepSeekDescription} /> : null}
-          {deepSeekEnhancing ? <PendingBlock title={t.enhancingMemory} description={t.deepSeekEnhanceDescription} steps={[t.summaryStepRead, t.summaryStepGenerate, t.summaryStepFinish]} /> : null}
           {deepSeekStatus ? <StatusCallout variant={deepSeekStatusKind === "error" ? "error" : "success"} title={deepSeekStatusKind === "error" ? t.actionFailed : t.actionComplete} description={deepSeekStatus} /> : null}
           <p className="text-xs text-muted-foreground">{t.deepSeekEnhanceDescription}</p>
         </CardContent>
@@ -2193,40 +2164,6 @@ function TrustStatusSummary({ title, items }: { title: string; items: Array<{ la
 function formatLastAiCall(snapshot: AppSnapshot, language: UiLanguage, t: Text) {
   const event = [...snapshot.events].reverse().find((item) => item.type.startsWith("deepseek_"));
   return event ? formatTime(event.createdAt, Date.now(), language) : t.notYet;
-}
-
-function FieldGuideItem({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="rounded-md border p-3 text-sm">
-      <p className="font-medium">{title}</p>
-      <p className="mt-1 text-muted-foreground">{description}</p>
-    </div>
-  );
-}
-
-function FieldGuideDialog() {
-  const { t } = useI18n();
-  return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="icon" title={t.fieldGuide}>
-          <HelpCircle className="h-4 w-4" />
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t.fieldGuide}</DialogTitle>
-          <DialogDescription>{t.fieldGuideDescription}</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-3 md:grid-cols-2">
-          <FieldGuideItem title={t.contentType} description={t.contentTypeGuide} />
-          <FieldGuideItem title={t.source} description={t.sourceGuide} />
-          <FieldGuideItem title={t.readingStatus} description={t.readingGuide} />
-          <FieldGuideItem title={t.importance} description={t.importanceGuide} />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 function eventMetaText(event: { meta?: Record<string, string | number | boolean> }, key: string) {
@@ -2348,18 +2285,52 @@ function MemoryResultRow({ tab, refresh, reason, reasonVariant, showStatusBadge,
   const notify = useToast();
   const [restoring, setRestoring] = useState(false);
   const [copying, setCopying] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const contentType = enumMeta("contentType", tab.card.contentType, language);
   const importance = enumMeta("importance", tab.card.importance, language);
   const source = enumMeta("source", tab.card.source, language);
   const readingStatus = enumMeta("readingStatus", tab.card.readingStatus, language);
   const statusLabel = tab.archived ? t.archived : reasonVariant === "ghost" || isGhost ? t.ghostStatus : t.active;
+  const isAiEnhanced = Boolean(tab.card.aiEnhanced);
+  const handleArchive = async () => {
+    setArchiving(true);
+    try {
+      await archiveTab(tab.id);
+      await refresh();
+    } catch {
+      notify(t.archiveFailed);
+    } finally {
+      setArchiving(false);
+    }
+  };
+  const handleUnarchive = async () => {
+    setArchiving(true);
+    try {
+      await unarchiveTab(tab.id);
+      await refresh();
+    } catch {
+      notify(t.archiveFailed);
+    } finally {
+      setArchiving(false);
+    }
+  };
   return (
-    <div className="grid min-w-0 gap-3 px-4 py-3 xl:grid-cols-[minmax(420px,1fr)_minmax(360px,0.9fr)] xl:items-center">
+    <div
+      className={cn(
+        "grid min-w-0 gap-3 border-l-2 px-4 py-3 transition-colors xl:grid-cols-[minmax(420px,1fr)_minmax(360px,0.9fr)] xl:items-center",
+        isAiEnhanced
+          ? "border-l-[#0099FF] bg-[#0099FF]/[0.055] dark:bg-[#0099FF]/[0.09]"
+          : "border-l-transparent"
+      )}
+    >
       <div className="flex min-w-0 items-start gap-3">
         <Favicon tab={tab} />
         <div className="min-w-0 flex-1">
           <button
-            className="flex min-w-0 items-start gap-1.5 text-left text-sm font-medium leading-5 hover:underline disabled:cursor-wait disabled:opacity-70"
+            className={cn(
+              "flex min-w-0 items-start gap-1.5 text-left text-sm font-medium leading-5 hover:underline disabled:cursor-wait disabled:opacity-70",
+              isAiEnhanced ? "text-[#005F99] dark:text-[#D8F1FF]" : undefined
+            )}
             title={t.reopen}
             disabled={restoring}
             onClick={async () => {
@@ -2374,12 +2345,23 @@ function MemoryResultRow({ tab, refresh, reason, reasonVariant, showStatusBadge,
           >
             {restoring ? <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" /> : null}
             {tab.card.aiEnhanced ? (
-              <span className="mt-0.5 shrink-0 text-sky-500 dark:text-sky-300" title={t.aiEnhanced}>
+              <span className="mt-0.5 shrink-0 rounded-sm bg-[#0099FF]/15 p-0.5 text-[#0099FF] ring-1 ring-[#0099FF]/25" title={t.aiEnhanced}>
                 <Sparkles className="h-3.5 w-3.5" aria-label={t.aiEnhanced} />
               </span>
             ) : null}
-            <span className="line-clamp-2 min-w-0 break-words [overflow-wrap:anywhere]">{tab.card.summary}</span>
+            <span className="line-clamp-2 min-w-0 break-words [overflow-wrap:anywhere]" title={tab.title}>{tab.title}</span>
           </button>
+          {tab.card.summary && tab.card.summary.trim() !== tab.title.trim() ? (
+            <p
+              className={cn(
+                "mt-1 line-clamp-2 min-w-0 break-words text-sm leading-5 [overflow-wrap:anywhere]",
+                isAiEnhanced ? "text-[#006BB3] dark:text-[#8FD5FF]" : "text-muted-foreground"
+              )}
+              title={tab.card.summary}
+            >
+              {tab.card.summary}
+            </p>
+          ) : null}
           <div className="mt-1 flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
             <span className="truncate" title={tab.url}>{tab.url}</span>
             <button
@@ -2405,6 +2387,36 @@ function MemoryResultRow({ tab, refresh, reason, reasonVariant, showStatusBadge,
             {showStatusBadge ? <Badge variant={tab.archived || isGhost ? "default" : "outline"}>{t.status}: {statusLabel}</Badge> : null}
             <Badge variant="outline" title={importance.description}>{t.importance}: {importance.label}</Badge>
             <EditCardButton tab={tab} refresh={refresh} compact />
+            {!tab.archived && tab.card.importance === "safe" ? (
+              <AsyncButton
+                variant="secondary"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                title={t.archiveThisTab}
+                aria-label={t.archiveThisTab}
+                busy={archiving}
+                busyLabel={t.archiveTab}
+                onClick={handleArchive}
+              >
+                <Archive className="h-3.5 w-3.5" />
+                {t.archiveTab}
+              </AsyncButton>
+            ) : null}
+            {tab.archived ? (
+              <AsyncButton
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                title={t.unarchiveThisTab}
+                aria-label={t.unarchiveThisTab}
+                busy={archiving}
+                busyLabel={t.unarchiveTab}
+                onClick={handleUnarchive}
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                {t.unarchiveTab}
+              </AsyncButton>
+            ) : null}
           </div>
         </div>
       </div>

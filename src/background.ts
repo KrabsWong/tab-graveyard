@@ -22,7 +22,12 @@ import {
 import type { ContentType, ExtensionRequest, ExtensionResponse, GraveyardState, Importance, QuickRecallItem, ReadingStatus, RecallCue, RecallFilters, RecallResult, RecallSynthesisResult, SourceType, TabInfoCard, TabMemory } from "@/lib/types";
 
 const UNDO_MS = 5_000;
+const AUTO_ENHANCE_STABLE_MS = 30_000;
+const AUTO_ENHANCE_ALARM_PREFIX = "tab-graveyard-auto-enhance:";
 const activeStartedByTabId = new Map<number, number>();
+const autoEnhanceQueue: Array<{ tabId: number; url: string }> = [];
+const autoEnhancePendingKeys = new Set<string>();
+let autoEnhanceRunning = false;
 
 function logResurface(stage: string, details?: Record<string, unknown>) {
   console.info("[Tab Graveyard][resurface]", stage, details ?? {});
@@ -44,6 +49,7 @@ chrome.runtime.onStartup.addListener(() => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "tab-graveyard-auto-archive") void runAutoArchive();
+  if (alarm.name.startsWith(AUTO_ENHANCE_ALARM_PREFIX)) void runScheduledAutoEnhance(alarm.name);
 });
 
 chrome.tabs.onCreated.addListener((tab) => {
@@ -51,12 +57,7 @@ chrome.tabs.onCreated.addListener((tab) => {
 });
 
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
-  if (changeInfo.url || changeInfo.title || changeInfo.favIconUrl || changeInfo.audible != null || changeInfo.pinned != null) {
-    void recordTab(tab);
-  }
-  if (changeInfo.status === "complete") {
-    void maybeResurface(tab);
-  }
+  void handleTabUpdated(changeInfo, tab);
 });
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
@@ -102,6 +103,17 @@ chrome.omnibox.onInputEntered.addListener(async (text) => {
   }
 });
 
+async function handleTabUpdated(changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) {
+  if (changeInfo.url || changeInfo.title || changeInfo.favIconUrl || changeInfo.audible != null || changeInfo.pinned != null) {
+    await recordTab(tab);
+  }
+  if (changeInfo.status === "complete") {
+    await recordTab(tab);
+    scheduleAutoEnhance(tab);
+    void maybeResurface(tab);
+  }
+}
+
 async function toggleCommandPalette() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!tab?.id) {
@@ -141,6 +153,10 @@ async function handleMessage(request: ExtensionRequest) {
       return refreshSessionsSnapshot();
     case "archiveGhosts":
       return archiveGhosts();
+    case "archiveTab":
+      return archiveTab(request.tabId);
+    case "unarchiveTab":
+      return unarchiveTab(request.tabId);
     case "previewArchive":
       return previewArchive();
     case "cancelArchivePreview":
@@ -280,6 +296,92 @@ async function recordTab(tab: chrome.tabs.Tab, options: { activated?: boolean } 
   await setState(addEvent(mergeTab(state, memory), options.activated ? "tab_activated" : "tab_recorded", tabEventMeta(memory)));
 }
 
+function scheduleAutoEnhance(tab: chrome.tabs.Tab) {
+  if (!tab.id || !tab.url) return;
+  chrome.alarms.create(`${AUTO_ENHANCE_ALARM_PREFIX}${tab.id}`, { when: Date.now() + AUTO_ENHANCE_STABLE_MS });
+}
+
+async function runScheduledAutoEnhance(alarmName: string) {
+  const tabId = Number(alarmName.slice(AUTO_ENHANCE_ALARM_PREFIX.length));
+  if (!Number.isFinite(tabId)) return;
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.id && tab.url) enqueueAutoEnhance(tab.id, tab.url);
+  } catch {
+    // The tab closed before the stable-period alarm fired.
+  }
+}
+
+function enqueueAutoEnhance(tabId: number, url: string) {
+  const key = `${tabId}:${url}`;
+  if (autoEnhancePendingKeys.has(key)) return;
+  autoEnhancePendingKeys.add(key);
+  autoEnhanceQueue.push({ tabId, url });
+  void processAutoEnhanceQueue();
+}
+
+async function processAutoEnhanceQueue() {
+  if (autoEnhanceRunning) return;
+  autoEnhanceRunning = true;
+  try {
+    while (autoEnhanceQueue.length) {
+      const job = autoEnhanceQueue.shift()!;
+      autoEnhancePendingKeys.delete(`${job.tabId}:${job.url}`);
+      await enhanceStableTab(job.tabId, job.url);
+    }
+  } finally {
+    autoEnhanceRunning = false;
+  }
+}
+
+async function enhanceStableTab(tabId: number, url: string) {
+  let liveTab: chrome.tabs.Tab | undefined;
+  try {
+    liveTab = await chrome.tabs.get(tabId);
+  } catch {
+    return;
+  }
+  if (liveTab.url !== url) return;
+
+  const state = await getState();
+  if (!canUseDeepSeek(state)) return;
+  if (state.settings.recordingPaused) return;
+  if (isBlacklisted(getDomain(url), state.settings.blacklistDomains)) return;
+
+  const tab = state.tabs.find((item) => !item.archived && ((item.tabId === tabId) || item.url === url));
+  if (!tab) return;
+  if (tab.card.aiEnhanced || tab.card.userEdited) return;
+
+  try {
+    await sendAiActivityMessage(tabId, "running", state);
+    const card = await enhanceInfoCard(state, tab, "auto");
+    const latest = await getState();
+    const next = ensureSessions({
+      ...latest,
+      tabs: latest.tabs.map((item) => {
+        if (item.id !== tab.id) return item;
+        if (item.card.aiEnhanced || item.card.userEdited) return item;
+        return { ...item, card };
+      })
+    });
+    await setState(addEvent(next, "deepseek_auto_enhance_success", { tabId: tab.id, domain: tab.domain }));
+    await sendAiActivityMessage(tabId, "success", next);
+  } catch (error) {
+    const reason = formatAiFallbackReason(error);
+    const latest = await getState();
+    const next = {
+      ...latest,
+      tabs: latest.tabs.map((item) =>
+        item.id === tab.id
+          ? { ...item, card: { ...item.card, aiEnhanceFailedAt: Date.now(), aiEnhanceFailureReason: reason } }
+          : item
+      )
+    };
+    await setState(addEvent(next, "deepseek_auto_enhance_failed", { tabId: tab.id, domain: tab.domain, reason }));
+    await sendAiActivityMessage(tabId, "failed", next, reason);
+  }
+}
+
 function buildMemoryFromTab(tab: chrome.tabs.Tab, state: GraveyardState, activatedAt?: number, existing = findExistingTab(state, tab)) {
   const memory = createTabMemory(tab, existing);
   if (!memory) return undefined;
@@ -329,6 +431,60 @@ async function archiveGhosts(allowedIds?: Set<string>) {
       // The browser tab may already be gone; the memory should still be archived.
     }
   }
+  return createSnapshot(next);
+}
+
+async function archiveTab(tabId: string) {
+  const state = await getState();
+  const now = Date.now();
+  const tab = state.tabs.find((item) => item.id === tabId);
+  if (!tab) throw new Error("Tab not found.");
+  if (!isVisibleTab(tab, state.settings)) return createSnapshot(state);
+  if (tab.archived) return createSnapshot(state);
+
+  const browserTabId = tab.tabId;
+  const archivedTab = { ...tab, archived: true, archivedAt: now, tabId: undefined };
+  const next = addEvent(
+    ensureSessions({
+      ...state,
+      tabs: state.tabs.map((item) => (item.id === tabId ? archivedTab : item)),
+      lastUndo: { id: `undo-${now}`, expiresAt: now + UNDO_MS, tabs: [archivedTab] }
+    }),
+    "tab_archived",
+    tabEventMeta(tab)
+  );
+  await setState(next);
+  if (typeof browserTabId === "number") {
+    try {
+      await chrome.tabs.remove(browserTabId);
+    } catch {
+      // The tab may already be closed; the memory should still be archived.
+    }
+  }
+  return createSnapshot(next);
+}
+
+async function unarchiveTab(tabId: string) {
+  const state = await getState();
+  const now = Date.now();
+  const tab = state.tabs.find((item) => item.id === tabId);
+  if (!tab) throw new Error("Tab not found.");
+  if (!isVisibleTab(tab, state.settings)) return createSnapshot(state);
+  if (!tab.archived) return createSnapshot(state);
+
+  const next = addEvent(
+    ensureSessions({
+      ...state,
+      tabs: state.tabs.map((item) =>
+        item.id === tabId
+          ? { ...item, archived: false, archivedAt: undefined, restored: true, restoredAt: now }
+          : item
+      )
+    }),
+    "tab_unarchived",
+    tabEventMeta(tab)
+  );
+  await setState(next);
   return createSnapshot(next);
 }
 
@@ -811,6 +967,26 @@ async function sendResurfaceMessage(tabId: number, tabs: TabMemory[]) {
   throw lastError;
 }
 
+async function sendAiActivityMessage(tabId: number, status: "running" | "success" | "failed", state: GraveyardState, reason?: string) {
+  const message = {
+    type: "TAB_GRAVEYARD_AI_ACTIVITY",
+    status,
+    reason,
+    language: resolveUiLanguage(state.settings.language),
+    theme: state.settings.theme
+  };
+  try {
+    await chrome.tabs.sendMessage(tabId, message);
+  } catch {
+    try {
+      await injectContentScript(tabId);
+      await chrome.tabs.sendMessage(tabId, message);
+    } catch {
+      // Restricted pages may reject extension UI injection; the memory update still completes.
+    }
+  }
+}
+
 function resolveUiLanguage(mode: string) {
   if (mode === "zh" || mode === "en") return mode;
   return chrome.i18n.getUILanguage().toLowerCase().startsWith("zh") ? "zh" : "en";
@@ -888,6 +1064,7 @@ async function quickRecall(query: string): Promise<QuickRecallItem[]> {
     ? recallTabs(tabs, query, {}).slice(0, 10)
     : tabs
         .slice()
+        .filter((tab) => !tab.archived && !isGhostTab(tab, state.settings, now))
         .sort((a, b) => b.lastActivatedAt - a.lastActivatedAt)
         .slice(0, 10)
         .map((tab) => ({ ...tab, score: 0, matchedCues: [], sourceBreakdown: {} }));
@@ -924,7 +1101,8 @@ function quickRecallItemFromTab(tab: TabMemory, state: GraveyardState, now: numb
     domain: tab.domain,
     favIconUrl: tab.favIconUrl,
     category: resolvedCategory,
-    reason: reason || fallbackReason
+    reason: reason || fallbackReason,
+    aiEnhanced: tab.card.aiEnhanced
   };
 }
 
@@ -1042,10 +1220,17 @@ async function enhanceWithDeepSeek() {
     if (!isVisibleTab(tab, state.settings)) continue;
     if (tab.card.aiEnhanced) continue;
     try {
-      tabs[index] = { ...tab, card: await enhanceInfoCard(state, tab) };
+      tabs[index] = { ...tab, card: await enhanceInfoCard(state, tab, "manual") };
       enhancedTabs += 1;
-    } catch {
-      // Keep local cards when the provider fails on one item.
+    } catch (error) {
+      tabs[index] = {
+        ...tab,
+        card: {
+          ...tab.card,
+          aiEnhanceFailedAt: Date.now(),
+          aiEnhanceFailureReason: formatAiFallbackReason(error)
+        }
+      };
     }
   }
 
@@ -1143,7 +1328,7 @@ Only include candidate ids. Prefer pages matching the complete intent or compoun
   return [...ranked, ...rest].slice(0, 60);
 }
 
-async function enhanceInfoCard(state: GraveyardState, tab: TabMemory): Promise<TabInfoCard> {
+async function enhanceInfoCard(state: GraveyardState, tab: TabMemory, source: "auto" | "manual"): Promise<TabInfoCard> {
   const payload = await deepSeekJson<DeepSeekInfoCard>(
     state,
     "You create privacy-preserving browser tab memory cards. Return compact JSON only.",
@@ -1163,8 +1348,9 @@ Return JSON:
   "importance": "must|should|maybe|safe",
   "possibleQueries": ["how a user might search for it"],
   "bilingualTopics": ["Chinese/English topic equivalents"]
-}`,
-    500
+}
+Keep arrays short: topics max 4, entities max 4, possibleQueries max 5, bilingualTopics max 6.`,
+    900
   );
 
   return {
@@ -1178,7 +1364,10 @@ Return JSON:
     possibleQueries: cleanStringArray(payload.possibleQueries).slice(0, 10).length ? cleanStringArray(payload.possibleQueries).slice(0, 10) : tab.card.possibleQueries,
     bilingualTopics: cleanStringArray(payload.bilingualTopics).slice(0, 10).length ? cleanStringArray(payload.bilingualTopics).slice(0, 10) : tab.card.bilingualTopics,
     aiEnhanced: true,
-    aiEnhancedAt: Date.now()
+    aiEnhancedAt: Date.now(),
+    aiEnhancedSource: source,
+    aiEnhanceFailedAt: undefined,
+    aiEnhanceFailureReason: undefined
   };
 }
 
@@ -1212,7 +1401,11 @@ async function parseDeepSeekJson<T>(state: GraveyardState, content: string, maxT
     return JSON.parse(extracted) as T;
   } catch (error) {
     const repaired = await repairDeepSeekJson(state, extracted, maxTokens, error);
-    return JSON.parse(extractJson(repaired)) as T;
+    try {
+      return JSON.parse(extractJson(repaired)) as T;
+    } catch {
+      throw new Error("AI returned incomplete structured data.");
+    }
   }
 }
 

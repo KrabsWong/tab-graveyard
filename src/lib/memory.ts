@@ -267,7 +267,12 @@ export function createInfoCard(title: string, url: string, existing?: TabInfoCar
     taskContext: existing?.taskContext ?? "",
     customTags: existing?.customTags ?? [],
     userEdited: existing?.userEdited,
-    userEditedAt: existing?.userEditedAt
+    userEditedAt: existing?.userEditedAt,
+    aiEnhanced: existing?.aiEnhanced,
+    aiEnhancedAt: existing?.aiEnhancedAt,
+    aiEnhancedSource: existing?.aiEnhancedSource,
+    aiEnhanceFailedAt: existing?.aiEnhanceFailedAt,
+    aiEnhanceFailureReason: existing?.aiEnhanceFailureReason
   };
 }
 

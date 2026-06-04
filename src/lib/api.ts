@@ -16,6 +16,14 @@ export function archiveGhosts() {
   return sendMessage<AppSnapshot>({ type: "archiveGhosts" });
 }
 
+export function archiveTab(tabId: string) {
+  return sendMessage<AppSnapshot>({ type: "archiveTab", tabId });
+}
+
+export function unarchiveTab(tabId: string) {
+  return sendMessage<AppSnapshot>({ type: "unarchiveTab", tabId });
+}
+
 export function previewArchive() {
   return sendMessage<AppSnapshot>({ type: "previewArchive" });
 }

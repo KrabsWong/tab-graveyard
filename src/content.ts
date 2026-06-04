@@ -5,6 +5,14 @@ type ResurfaceMessage = {
   tabs: Array<{ id: string; title: string; domain: string; url: string; favIconUrl?: string; archived?: boolean }>;
 };
 
+type AiActivityMessage = {
+  type: "TAB_GRAVEYARD_AI_ACTIVITY";
+  status: "running" | "success" | "failed";
+  language?: "en" | "zh";
+  theme?: "system" | "light" | "dark";
+  reason?: string;
+};
+
 type CommandPaletteMessage = {
   type: "TAB_GRAVEYARD_TOGGLE_COMMAND_PALETTE";
   language?: "en" | "zh";
@@ -20,19 +28,29 @@ type QuickRecallItem = {
   favIconUrl?: string;
   category: "active" | "ghost" | "archived" | "session";
   reason: string;
+  aiEnhanced?: boolean;
 };
 
 const tabGraveyardWindow = window as Window & { __tabGraveyardContentLoaded?: boolean };
+let activityTabs: ResurfaceMessage["tabs"] = [];
+let activityLanguage: "en" | "zh" = "en";
+let activityTheme: "system" | "light" | "dark" = "system";
+let activityAi: { status: AiActivityMessage["status"]; reason?: string } | undefined;
+let activityAutoClose: number | undefined;
 
 if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
   tabGraveyardWindow.__tabGraveyardContentLoaded = true;
   console.info("[Tab Graveyard][content]", "loaded", { url: location.href });
 
   try {
-    chrome.runtime.onMessage.addListener((message: ResurfaceMessage | CommandPaletteMessage) => {
+    chrome.runtime.onMessage.addListener((message: ResurfaceMessage | AiActivityMessage | CommandPaletteMessage) => {
       console.info("[Tab Graveyard][content]", "message", { type: message.type, count: "tabs" in message ? message.tabs.length : 0, url: location.href });
       if (message.type === "TAB_GRAVEYARD_RESURFACE" && message.tabs.length) {
         showResurface(message.tabs, message.language ?? "en", message.theme ?? "system");
+        return;
+      }
+      if (message.type === "TAB_GRAVEYARD_AI_ACTIVITY") {
+        showAiActivity(message.status, message.language ?? "en", message.theme ?? "system", message.reason);
         return;
       }
       if (message.type === "TAB_GRAVEYARD_TOGGLE_COMMAND_PALETTE") {
@@ -96,27 +114,83 @@ function isEditableTarget(target: EventTarget | null) {
 }
 
 function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", theme: "system" | "light" | "dark") {
-  document.getElementById("tab-graveyard-resurface")?.remove();
   console.info("[Tab Graveyard][content]", "show-resurface", { count: tabs.length, url: location.href });
+  activityTabs = tabs;
+  activityLanguage = language;
+  activityTheme = theme;
+  renderActivityOverlay();
+  scheduleActivityClose(12_000);
+}
+
+function showAiActivity(status: AiActivityMessage["status"], language: "en" | "zh", theme: "system" | "light" | "dark", reason?: string) {
+  activityAi = { status, reason };
+  activityLanguage = language;
+  activityTheme = theme;
+  renderActivityOverlay();
+  if (status === "running") {
+    window.clearTimeout(activityAutoClose);
+    activityAutoClose = undefined;
+  } else {
+    scheduleActivityClose(activityTabs.length ? 12_000 : 4_000);
+  }
+}
+
+function scheduleActivityClose(delayMs: number) {
+  window.clearTimeout(activityAutoClose);
+  activityAutoClose = window.setTimeout(() => {
+    if (activityAi?.status === "running") return;
+    activityTabs = [];
+    activityAi = undefined;
+    document.getElementById("tab-graveyard-activity")?.remove();
+  }, delayMs);
+}
+
+function renderActivityOverlay() {
+  document.getElementById("tab-graveyard-resurface")?.remove();
+  document.getElementById("tab-graveyard-activity")?.remove();
+  if (!activityTabs.length && !activityAi) return;
+
+  const language = activityLanguage;
+  const theme = activityTheme;
+  const tabs = activityTabs;
   const copy = getResurfaceCopy(language, tabs.length);
+  const activityCopy = getActivityCopy(language, activityAi);
   const colors = getThemeColors(theme);
+  const isCompact = !tabs.length;
 
   const root = document.createElement("div");
-  root.id = "tab-graveyard-resurface";
+  root.id = "tab-graveyard-activity";
   root.style.cssText = [
     "position:fixed",
     "right:20px",
     "bottom:20px",
     "z-index:2147483647",
-    "width:340px",
+    `width:${isCompact ? "auto" : "340px"}`,
+    `max-width:calc(100vw - 32px)`,
     "font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
     `color:${colors.foreground}`,
     `background:${colors.background}`,
     `border:1px solid ${colors.border}`,
     "border-radius:8px",
     `box-shadow:${colors.shadow}`,
-    "overflow:hidden"
+    "overflow:hidden",
+    "transition:opacity .16s ease,transform .16s ease"
   ].join(";");
+
+  if (isCompact) {
+    root.innerHTML = `
+      <button data-action="open-graveyard" title="${escapeHtml(activityCopy.title)}" aria-label="${escapeHtml(activityCopy.title)}" style="display:flex;align-items:center;gap:8px;height:38px;max-width:min(310px,calc(100vw - 32px));border:0;background:transparent;color:inherit;padding:0 12px;cursor:pointer;">
+        ${activityIcon(activityAi?.status, colors)}
+        <span style="min-width:0;max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:650;">${escapeHtml(activityCopy.title)}</span>
+      </button>
+    `;
+    root.querySelector<HTMLButtonElement>('[data-action="open-graveyard"]')?.addEventListener("click", () => {
+      sendRuntimeMessage({ type: "openDashboard" });
+      root.remove();
+    });
+    document.documentElement.append(root);
+    return;
+  }
 
   root.innerHTML = `
     <div style="padding:14px;border-bottom:1px solid ${colors.border};background:${colors.header};">
@@ -129,6 +203,12 @@ function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", th
         <div style="font-size:14px;font-weight:700;line-height:1;">Tab Graveyard</div>
       </div>
       <div style="font-size:12px;line-height:1.45;color:${colors.muted};margin-top:7px;">${copy.subtitle}</div>
+      ${activityAi ? `
+        <div style="display:flex;align-items:center;gap:7px;margin-top:9px;border-top:1px solid ${colors.border};padding-top:9px;color:${activityAi.status === "failed" ? colors.warning : colors.muted};font-size:11px;line-height:1.35;">
+          ${activityIcon(activityAi.status, colors)}
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(activityCopy.title)}</span>
+        </div>
+      ` : ""}
     </div>
     <div style="padding:10px 14px;display:grid;gap:10px;max-height:150px;overflow-y:${tabs.length > 3 ? "auto" : "visible"};">
       ${tabs
@@ -164,7 +244,8 @@ function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", th
   const openTabs = (selectedTabs: ResurfaceMessage["tabs"]) => {
     sendRuntimeMessage({ type: "resurfaceAction", tabIds: selectedTabs.map((tab) => tab.id), action: "opened" });
     selectedTabs.forEach((tab) => sendRuntimeMessage({ type: "openMemoryTab", tabId: tab.id }));
-    root.remove();
+    activityTabs = [];
+    renderActivityOverlay();
   };
   root.querySelectorAll<HTMLButtonElement>("[data-url-index]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -174,14 +255,15 @@ function showResurface(tabs: ResurfaceMessage["tabs"], language: "en" | "zh", th
   });
   root.querySelector<HTMLButtonElement>('[data-action="dismiss"]')?.addEventListener("click", () => {
     sendRuntimeMessage({ type: "resurfaceAction", tabIds: ids, action: "dismissed" });
-    root.remove();
+    activityTabs = [];
+    renderActivityOverlay();
   });
   root.querySelector<HTMLButtonElement>('[data-action="open-graveyard"]')?.addEventListener("click", () => {
     sendRuntimeMessage({ type: "openDashboard" });
-    root.remove();
+    activityTabs = [];
+    renderActivityOverlay();
   });
   document.documentElement.append(root);
-  window.setTimeout(() => root.remove(), 12_000);
 }
 
 function toggleCommandPalette(language: "en" | "zh", theme: "system" | "light" | "dark", aiAvailable: boolean) {
@@ -221,15 +303,22 @@ function showCommandPalette(language: "en" | "zh", theme: "system" | "light" | "
       .hint{font-size:11px;color:${colors.muted};white-space:nowrap}
       .mode{padding:9px 16px 0;color:${colors.muted};font-size:12px;line-height:1.45}
       .status{padding:6px 16px 10px;color:${colors.muted};font-size:12px;border-bottom:1px solid ${colors.border}}
-      .list{display:grid;max-height:380px;overflow:auto;padding:8px}
-      .item{display:grid;grid-template-columns:32px minmax(0,1fr) max-content;gap:10px;align-items:center;width:100%;min-width:0;border:0;border-radius:8px;background:transparent;color:inherit;text-align:left;padding:8px;cursor:pointer;overflow:hidden}
+      .list{display:grid;gap:4px;max-height:380px;overflow:auto;padding:8px}
+      .item{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px;align-items:center;width:100%;min-width:0;border:0;border-left:2px solid transparent;border-radius:0;background:transparent;color:inherit;text-align:left;padding:8px;cursor:pointer;overflow:hidden}
       .item[aria-selected="true"]{background:${colors.iconBackground}}
+      .item.ai{border-left-color:#0099FF;background:rgba(0,153,255,.055)}
+      .item.ai[aria-selected="true"]{background:rgba(0,153,255,.12)}
       .avatar{width:32px;height:32px;border-radius:7px;border:1px solid ${colors.border};background:${colors.background};display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:11px;font-weight:700}
       .avatar img{width:100%;height:100%;object-fit:contain;padding:4px}
       .content{display:block;min-width:0;overflow:hidden}
       .title{display:block;max-width:100%;font-size:13px;font-weight:650;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .meta{margin-top:2px;font-size:11px;color:${colors.muted};white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .badge{justify-self:end;max-width:88px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;font-weight:650;border:1px solid ${colors.border};border-radius:999px;padding:3px 7px;color:${colors.muted};background:${colors.background}}
+      .item.ai .title{color:${colors.aiTitle}}
+      .meta{display:flex;align-items:center;gap:5px;min-width:0;margin-top:3px;font-size:11px;color:${colors.muted};white-space:nowrap;overflow:hidden}
+      .domain{min-width:0;overflow:hidden;text-overflow:ellipsis}
+      .tag{flex:0 0 auto;border:1px solid ${colors.border};border-radius:999px;background:${colors.background};color:${colors.muted};padding:1px 6px;font-size:10px;font-weight:650;line-height:1.5}
+      .reason-tag{max-width:130px;overflow:hidden;text-overflow:ellipsis}
+      .item.ai .meta{color:${colors.aiMeta}}
+      .item.ai .tag{border-color:rgba(0,153,255,.35);background:rgba(0,153,255,.10);color:${colors.aiMeta}}
       .empty{padding:24px 16px;text-align:center;color:${colors.muted};font-size:13px}
       .footer{display:flex;justify-content:flex-end;border-top:1px solid ${colors.border};padding:10px 12px;background:${colors.header}}
       .open{border:1px solid ${colors.border};border-radius:8px;background:${colors.background};color:${colors.foreground};font:650 12px/1.2 inherit;padding:7px 10px;cursor:pointer}
@@ -262,13 +351,16 @@ function showCommandPalette(language: "en" | "zh", theme: "system" | "light" | "
       return;
     }
     list.innerHTML = results.map((item, index) => `
-      <button class="item" data-index="${index}" aria-selected="${index === selectedIndex}">
+      <button class="item${item.aiEnhanced ? " ai" : ""}" data-index="${index}" aria-selected="${index === selectedIndex}">
         <span class="avatar">${item.favIconUrl ? `<img src="${escapeHtml(item.favIconUrl)}" alt="">` : escapeHtml(getFaviconFallback(item.domain))}</span>
         <span class="content">
           <span class="title">${escapeHtml(item.title)}</span>
-          <span class="meta">${escapeHtml(item.domain)} · ${escapeHtml(item.reason)}</span>
+          <span class="meta">
+            <span class="domain" title="${escapeHtml(item.domain)}">${escapeHtml(item.domain)}</span>
+            <span class="tag">${escapeHtml(copy.categories[item.category])}</span>
+            ${formatQuickReasonTag(item, copy)}
+          </span>
         </span>
-        <span class="badge">${copy.categories[item.category]}</span>
       </button>
     `).join("");
     list.querySelectorAll<HTMLButtonElement>(".item").forEach((button) => {
@@ -353,6 +445,59 @@ function getResurfaceCopy(language: "en" | "zh", count: number) {
   };
 }
 
+function getActivityCopy(language: "en" | "zh", ai?: { status: AiActivityMessage["status"]; reason?: string }) {
+  if (!ai) return { title: language === "zh" ? "Tab Graveyard 活动" : "Tab Graveyard activity" };
+  if (language === "zh") {
+    if (ai.status === "running") return { title: "AI 正在增强这张记忆卡" };
+    if (ai.status === "success") return { title: "AI 已更新这张记忆卡" };
+    return { title: "AI 增强暂未完成" };
+  }
+  if (ai.status === "running") return { title: "AI is enhancing this memory card" };
+  if (ai.status === "success") return { title: "AI updated this memory card" };
+  return { title: "AI enhancement did not complete" };
+}
+
+function formatQuickReasonTag(item: QuickRecallItem, copy: ReturnType<typeof getCommandPaletteCopy>) {
+  const defaults = new Set(["Active tab", "Ghost tab", "Archived memory", copy.categories[item.category]]);
+  const reason = item.reason.trim();
+  if (!reason || defaults.has(reason)) return "";
+  return `<span class="tag reason-tag" title="${escapeHtml(reason)}">${escapeHtml(reason)}</span>`;
+}
+
+function activityIcon(status: AiActivityMessage["status"] | undefined, colors: ReturnType<typeof getThemeColors>) {
+  if (status === "success") {
+    return `
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="${colors.success}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:0 0 auto;">
+        <path d="M20 6 9 17l-5-5"></path>
+      </svg>
+    `;
+  }
+  if (status === "failed") {
+    return `
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="${colors.warning}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:0 0 auto;">
+        <circle cx="12" cy="12" r="9"></circle>
+        <path d="M12 7v6"></path>
+        <path d="M12 17h.01"></path>
+      </svg>
+    `;
+  }
+  return `
+    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="${colors.foreground}" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:0 0 auto;">
+      <g>
+        <path d="M12 3v3"></path>
+        <path d="M12 18v3"></path>
+        <path d="m4.22 4.22 2.12 2.12"></path>
+        <path d="m17.66 17.66 2.12 2.12"></path>
+        <path d="M3 12h3"></path>
+        <path d="M18 12h3"></path>
+        <path d="m4.22 19.78 2.12-2.12"></path>
+        <path d="m17.66 6.34 2.12-2.12"></path>
+        ${status === "running" ? `<animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="1.1s" repeatCount="indefinite"></animateTransform>` : ""}
+      </g>
+    </svg>
+  `;
+}
+
 function getCommandPaletteCopy(language: "en" | "zh") {
   if (language === "zh") {
     return {
@@ -408,6 +553,10 @@ function getThemeColors(theme: "system" | "light" | "dark") {
       iconBackground: "#27272a",
       muted: "#a1a1aa",
       border: "#27272a",
+      success: "#34d399",
+      warning: "#fbbf24",
+      aiTitle: "#D8F1FF",
+      aiMeta: "#8FD5FF",
       shadow: "0 10px 30px rgba(0,0,0,.35)"
     };
   }
@@ -418,6 +567,10 @@ function getThemeColors(theme: "system" | "light" | "dark") {
     iconBackground: "#e4e4e7",
     muted: "#71717a",
     border: "#e4e4e7",
+    success: "#059669",
+    warning: "#b45309",
+    aiTitle: "#005F99",
+    aiMeta: "#006BB3",
     shadow: "0 10px 30px rgba(0,0,0,.12)"
   };
 }
