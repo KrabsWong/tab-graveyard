@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, CheckCircle2, Copy, Download, Edit3, Eye, EyeOff, FileUp, Ghost, History, Layers, Loader2, RotateCcw, Search, Settings, Sparkles, Trash2 } from "lucide-react";
+import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, Bell, CheckCircle2, Copy, Database, Download, Edit3, Eye, EyeOff, FileUp, Ghost, History, Layers, Loader2, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
 import "./styles.css";
 import { archiveGhosts, archiveTab, cancelArchivePreview, clearData, confirmArchivePreview, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
@@ -30,6 +30,16 @@ const messages = {
     settingsAiTab: "AI",
     settingsRulesTab: "Rules",
     settingsDataTab: "Data",
+    settingsArchiveTab: "Archive",
+    settingsResurfaceTab: "Resurface",
+    settingsSectionStatus: "Status",
+    settingsGeneralHint: "Language and appearance.",
+    settingsArchiveHint: "Ghost timing and archive confirmation.",
+    settingsResurfaceHint: "Suggestions while browsing.",
+    settingsPrivacyHint: "Recording and privacy boundaries.",
+    settingsAiHint: "Provider and AI permissions.",
+    settingsRulesHint: "Domains to skip.",
+    settingsDataHint: "Export, import, and logs.",
     todayRecap: "Today's Recap",
     yesterdayRecap: "Yesterday {count} tabs. Standout: {title}.",
     total: "Total",
@@ -191,7 +201,11 @@ const messages = {
     firstRun: "First Run",
     firstRunDescription: "Choose how Tab Graveyard should start building memory.",
     generalSettings: "General",
-    generalSettingsDescription: "Language, appearance, archive behavior, and resurfacing defaults.",
+    generalSettingsDescription: "Language and appearance defaults.",
+    archiveSettingsDescription: "Control when inactive tabs become Ghost Tabs and how much confirmation archive actions require.",
+    resurfaceSettingsDescription: "Control when related archived pages should surface while you browse.",
+    rulesSettingsDescription: "Keep private, noisy, or irrelevant domains out of Tab Memory.",
+    dataSettingsDescription: "Export, import, inspect local events, or clear local memory.",
     importHistory: "Import history",
     useDemo: "Use demo",
     startEmpty: "Start empty",
@@ -294,6 +308,16 @@ const messages = {
     settingsAiTab: "AI",
     settingsRulesTab: "规则",
     settingsDataTab: "数据",
+    settingsArchiveTab: "归档",
+    settingsResurfaceTab: "唤醒",
+    settingsSectionStatus: "状态",
+    settingsGeneralHint: "语言与外观。",
+    settingsArchiveHint: "幽灵阈值与归档确认。",
+    settingsResurfaceHint: "浏览时的主动提示。",
+    settingsPrivacyHint: "记录开关与隐私边界。",
+    settingsAiHint: "服务商与 AI 权限。",
+    settingsRulesHint: "需要跳过的域名。",
+    settingsDataHint: "导入导出与日志。",
     todayRecap: "今日回顾",
     yesterdayRecap: "昨天打开了 {count} 个标签。最重要的是：{title}。",
     total: "总数",
@@ -455,7 +479,11 @@ const messages = {
     firstRun: "首次启动",
     firstRunDescription: "选择 Tab Graveyard 如何开始建立记忆。",
     generalSettings: "通用设置",
-    generalSettingsDescription: "界面语言、主题外观、归档行为和主动唤醒默认值。",
+    generalSettingsDescription: "界面语言与主题外观默认值。",
+    archiveSettingsDescription: "控制不活跃标签何时进入幽灵状态，以及归档动作需要多少确认。",
+    resurfaceSettingsDescription: "控制浏览时何时提示相关的历史归档页面。",
+    rulesSettingsDescription: "把私密、嘈杂或无关的域名排除在 Tab Memory 之外。",
+    dataSettingsDescription: "导出、导入、查看本地事件，或清空本地记忆。",
     importHistory: "导入历史",
     useDemo: "使用示例",
     startEmpty: "从零开始",
@@ -1816,8 +1844,25 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
     }
   };
 
+  const languageLabel = snapshot.settings.language === "zh" ? t.chinese : snapshot.settings.language === "en" ? t.english : t.system;
+  const themeLabel = enumMeta("theme", snapshot.settings.theme, language).label;
+  const archiveTrustLabel = enumMeta("archiveTrust", snapshot.settings.archiveTrustStage, language).label;
+  const resurfaceState = snapshot.settings.recordingPaused ? t.recordingPausedStatus : snapshot.settings.resurfaceEnabled ? t.enabled : t.disabled;
+  const resurfaceFrequencyLabel = snapshot.settings.resurfaceRule.maxPerDay === 0 ? t.resurfaceFrequencyAlways : String(snapshot.settings.resurfaceRule.maxPerDay);
+  const cooldownHours = snapshot.settings.resurfaceRule.cooldownHours;
+  const resurfaceCooldownLabel = cooldownHours === 0 ? t.resurfaceCooldownNone : cooldownHours < 1 ? `${Math.round(cooldownHours * 60)}m` : `${cooldownHours}h`;
+  const settingsSections = [
+    { value: "general", title: t.settingsGeneralTab, description: t.settingsGeneralHint, icon: <SlidersHorizontal className="h-4 w-4" /> },
+    { value: "archive", title: t.settingsArchiveTab, description: t.settingsArchiveHint, icon: <Archive className="h-4 w-4" /> },
+    { value: "resurface", title: t.settingsResurfaceTab, description: t.settingsResurfaceHint, icon: <Bell className="h-4 w-4" /> },
+    { value: "privacy", title: t.settingsPrivacyTab, description: t.settingsPrivacyHint, icon: <ShieldCheck className="h-4 w-4" /> },
+    { value: "ai", title: t.settingsAiTab, description: t.settingsAiHint, icon: <Sparkles className="h-4 w-4" /> },
+    { value: "rules", title: t.settingsRulesTab, description: t.settingsRulesHint, icon: <Layers className="h-4 w-4" /> },
+    { value: "data", title: t.settingsDataTab, description: t.settingsDataHint, icon: <Database className="h-4 w-4" /> }
+  ];
+
   return (
-    <main className="mx-auto grid min-h-screen w-full max-w-4xl content-start items-start gap-5 px-5 py-6">
+    <main className="mx-auto grid min-h-screen w-full max-w-6xl content-start items-start gap-5 px-4 py-5 sm:px-6 lg:py-7">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <AppLogo size="lg" onClick={() => setLogoOpen(true)} />
@@ -1845,292 +1890,369 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
           setSettingsTab(value);
           window.scrollTo(0, 0);
         }}
-        className="w-full self-start"
+        className="grid w-full items-start gap-5 lg:grid-cols-[260px_minmax(0,1fr)]"
       >
-        <TabsList className="flex h-auto flex-wrap justify-start">
-          <TabsTrigger value="general">{t.settingsGeneralTab}</TabsTrigger>
-          <TabsTrigger value="privacy">{t.settingsPrivacyTab}</TabsTrigger>
-          <TabsTrigger value="ai">{t.settingsAiTab}</TabsTrigger>
-          <TabsTrigger value="rules">{t.settingsRulesTab}</TabsTrigger>
-          <TabsTrigger value="data">{t.settingsDataTab}</TabsTrigger>
-        </TabsList>
-        <TabsContent value="general" className="mt-4 grid items-start gap-5">
-      <Card>
-        <CardContent className="grid gap-6 p-5">
-          <SelectRow
-            label={t.language}
-            value={snapshot.settings.language}
-            options={[
-              { value: "system", label: t.system, description: t.languageSystemDescription },
-              { value: "zh", label: t.chinese, description: t.languageChineseDescription },
-              { value: "en", label: t.english, description: t.languageEnglishDescription }
-            ]}
-            description={t.languageDescription}
-            showOptionDescription
-            onChange={(language) => update({ language: language as SettingsType["language"] })}
-          />
-          <SelectRow
-            label={t.theme}
-            value={snapshot.settings.theme}
-            options={enumOptions("theme", ["system", "light", "dark"], language)}
-            description={t.themeDescription}
-            showOptionDescription
-            onChange={(theme) => update({ theme: theme as SettingsType["theme"] })}
-          />
-          <SelectRow
-            label={t.ghostThreshold}
-            value={String(snapshot.settings.ghostThresholdHours)}
-            options={["12", "24", "48", "168"].map((hours) => ({ value: hours, label: `${hours}h`, description: interpolate(t.ghostThresholdOption, { hours }) }))}
-            description={t.ghostThresholdDescription}
-            showOptionDescription
-            onChange={(value) => update({ ghostThresholdHours: Number(value) })}
-          />
-          <SettingSection title={t.archivePolicy}>
-            <SelectRow label={t.archiveTrust} value={snapshot.settings.archiveTrustStage} options={enumOptions("archiveTrust", ["manual", "preview", "auto"], language)} description={t.archiveTrustDescription} showOptionDescription onChange={(archiveTrustStage) => update({ archiveTrustStage: archiveTrustStage as SettingsType["archiveTrustStage"] })} />
-            <ToggleRow
-              label={t.archivePreannounce}
-              description={t.archivePreannounceDescription}
-              checked={snapshot.settings.archivePreannounce}
-              disabled={snapshot.settings.archiveTrustStage !== "auto"}
-              onChange={(archivePreannounce) => update({ archivePreannounce })}
+        <aside className="min-w-0 lg:sticky lg:top-5">
+          <TabsList className="grid h-auto w-full grid-cols-1 gap-1 rounded-lg bg-muted/50 p-1">
+            {settingsSections.map((section) => (
+              <SettingsNavTrigger key={section.value} {...section} />
+            ))}
+          </TabsList>
+        </aside>
+
+        <div className="min-w-0">
+          <TabsContent value="general" className="mt-0 grid items-start gap-5">
+            <TrustStatusSummary
+              title={t.settingsSectionStatus}
+              items={[
+                { label: t.language, value: languageLabel },
+                { label: t.theme, value: themeLabel },
+                { label: t.recordingStatus, value: snapshot.settings.recordingPaused ? t.recordingPausedStatus : t.recordingActiveStatus },
+                { label: t.aiStatus, value: canUseAiFeatures(snapshot.settings) ? t.enabled : t.disabled }
+              ]}
             />
-          </SettingSection>
-          <SettingSection title={t.resurfacePolicy}>
-            {snapshot.settings.recordingPaused ? (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/40 p-3 text-sm">
-                <p className="min-w-0 flex-1 text-muted-foreground">{t.resurfacePausedNotice}</p>
-                <Button size="sm" variant="outline" onClick={() => update({ recordingPaused: false })}>
-                  {t.resumeRecording}
-                </Button>
+            <SettingsPanel title={t.generalSettings} description={t.generalSettingsDescription}>
+              <SelectRow
+                label={t.language}
+                value={snapshot.settings.language}
+                options={[
+                  { value: "system", label: t.system, description: t.languageSystemDescription },
+                  { value: "zh", label: t.chinese, description: t.languageChineseDescription },
+                  { value: "en", label: t.english, description: t.languageEnglishDescription }
+                ]}
+                description={t.languageDescription}
+                showOptionDescription
+                onChange={(language) => update({ language: language as SettingsType["language"] })}
+              />
+              <SelectRow
+                label={t.theme}
+                value={snapshot.settings.theme}
+                options={enumOptions("theme", ["system", "light", "dark"], language)}
+                description={t.themeDescription}
+                showOptionDescription
+                onChange={(theme) => update({ theme: theme as SettingsType["theme"] })}
+              />
+            </SettingsPanel>
+          </TabsContent>
+
+          <TabsContent value="archive" className="mt-0 grid items-start gap-5">
+            <TrustStatusSummary
+              title={t.settingsSectionStatus}
+              items={[
+                { label: t.ghostTabs, value: String(snapshot.ghostTabs.length) },
+                { label: t.ghostThreshold, value: `${snapshot.settings.ghostThresholdHours}h` },
+                { label: t.archiveTrust, value: archiveTrustLabel },
+                { label: t.archivePreannounce, value: snapshot.settings.archivePreannounce && snapshot.settings.archiveTrustStage === "auto" ? t.enabled : t.disabled }
+              ]}
+            />
+            <SettingsPanel title={t.archivePolicy} description={t.archiveSettingsDescription}>
+              <SelectRow
+                label={t.ghostThreshold}
+                value={String(snapshot.settings.ghostThresholdHours)}
+                options={["12", "24", "48", "168"].map((hours) => ({ value: hours, label: `${hours}h`, description: interpolate(t.ghostThresholdOption, { hours }) }))}
+                description={t.ghostThresholdDescription}
+                showOptionDescription
+                onChange={(value) => update({ ghostThresholdHours: Number(value) })}
+              />
+              <SelectRow label={t.archiveTrust} value={snapshot.settings.archiveTrustStage} options={enumOptions("archiveTrust", ["manual", "preview", "auto"], language)} description={t.archiveTrustDescription} showOptionDescription onChange={(archiveTrustStage) => update({ archiveTrustStage: archiveTrustStage as SettingsType["archiveTrustStage"] })} />
+              <ToggleRow
+                label={t.archivePreannounce}
+                description={t.archivePreannounceDescription}
+                checked={snapshot.settings.archivePreannounce}
+                disabled={snapshot.settings.archiveTrustStage !== "auto"}
+                onChange={(archivePreannounce) => update({ archivePreannounce })}
+              />
+            </SettingsPanel>
+          </TabsContent>
+
+          <TabsContent value="resurface" className="mt-0 grid items-start gap-5">
+            <TrustStatusSummary
+              title={t.settingsSectionStatus}
+              items={[
+                { label: t.resurface, value: resurfaceState },
+                { label: t.resurfaceIncludeGhosts, value: snapshot.settings.resurfaceRule.includeGhostTabs ? t.enabled : t.disabled },
+                { label: t.resurfaceFrequency, value: resurfaceFrequencyLabel },
+                { label: t.resurfaceCooldown, value: resurfaceCooldownLabel }
+              ]}
+            />
+            <SettingsPanel title={t.resurfacePolicy} description={t.resurfaceSettingsDescription}>
+              {snapshot.settings.recordingPaused ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/40 p-3 text-sm">
+                  <p className="min-w-0 flex-1 text-muted-foreground">{t.resurfacePausedNotice}</p>
+                  <Button size="sm" variant="outline" onClick={() => update({ recordingPaused: false })}>
+                    {t.resumeRecording}
+                  </Button>
+                </div>
+              ) : null}
+              <ToggleRow
+                label={t.resurface}
+                description={snapshot.settings.recordingPaused ? t.resurfacePausedDescription : t.resurfaceDescription}
+                checked={snapshot.settings.resurfaceEnabled}
+                disabled={snapshot.settings.recordingPaused}
+                onChange={(resurfaceEnabled) => update({ resurfaceEnabled })}
+              />
+              <ToggleRow
+                label={t.resurfaceIncludeGhosts}
+                description={t.resurfaceIncludeGhostsDescription}
+                checked={snapshot.settings.resurfaceRule.includeGhostTabs}
+                disabled={snapshot.settings.recordingPaused || !snapshot.settings.resurfaceEnabled}
+                onChange={(includeGhostTabs) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, includeGhostTabs } })}
+              />
+              <SelectRow
+                label={t.resurfaceFrequency}
+                value={String(snapshot.settings.resurfaceRule.maxPerDay)}
+                options={[
+                  ...["1", "3", "5", "10", "20", "50"].map((count) => ({ value: count, label: count, description: interpolate(t.resurfaceFrequencyOption, { count }) })),
+                  { value: "0", label: t.resurfaceFrequencyAlways, description: t.resurfaceFrequencyAlwaysDescription }
+                ]}
+                description={t.resurfaceFrequencyDescription}
+                disabled={snapshot.settings.recordingPaused}
+                showOptionDescription
+                onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, maxPerDay: Number(value) } })}
+              />
+              <SelectRow
+                label={t.resurfaceCooldown}
+                value={String(snapshot.settings.resurfaceRule.cooldownHours)}
+                options={[
+                  { value: "0", label: t.resurfaceCooldownNone, description: t.resurfaceCooldownNoneDescription },
+                  ...[
+                    { value: "0.0833333333", label: "5m", minutes: "5" },
+                    { value: "0.25", label: "15m", minutes: "15" },
+                    { value: "0.5", label: "30m", minutes: "30" }
+                  ].map((item) => ({ value: item.value, label: item.label, description: interpolate(t.resurfaceCooldownMinutesOption, { minutes: item.minutes }) })),
+                  ...["1", "3", "6", "12", "24"].map((hours) => ({ value: hours, label: `${hours}h`, description: interpolate(t.resurfaceCooldownOption, { hours }) }))
+                ]}
+                description={t.resurfaceCooldownDescription}
+                disabled={snapshot.settings.recordingPaused}
+                showOptionDescription
+                onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, cooldownHours: Number(value) } })}
+              />
+            </SettingsPanel>
+          </TabsContent>
+
+          <TabsContent value="privacy" className="mt-0 grid items-start gap-5">
+            <TrustStatusSummary
+              title={t.trustSummary}
+              items={[
+                { label: t.recordingStatus, value: snapshot.settings.recordingPaused ? t.recordingPausedStatus : t.recordingActiveStatus },
+                { label: t.strictPrivacy, value: snapshot.settings.strictPrivacy ? t.enabled : t.disabled },
+                { label: t.blockedDomains, value: String(snapshot.settings.blacklistDomains.length) },
+                { label: t.localMemory, value: String(snapshot.tabs.length) }
+              ]}
+            />
+            <SettingsPanel title={t.privacyRecording} description={t.privacyDescription}>
+              <ToggleRow label={t.pauseRecording} description={t.pauseRecordingDescription} checked={snapshot.settings.recordingPaused} onChange={(recordingPaused) => update({ recordingPaused })} />
+              <ToggleRow label={t.strictPrivacy} description={t.strictPrivacyDescription} checked={snapshot.settings.strictPrivacy} onChange={(strictPrivacy) => update({ strictPrivacy, aiMode: strictPrivacy ? "local-only" : snapshot.settings.aiMode })} />
+            </SettingsPanel>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.privacyMap}</CardTitle>
+                <CardDescription>{t.privacyMapDescription}</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
+                <PrivacyFact label={t.privacyLocalFields} value={t.privacyLocalFieldsValue} />
+                <PrivacyFact label={t.privacyNeverCaptured} value={t.privacyNeverCapturedValue} />
+                <PrivacyFact label={t.privacyAiOutbound} value={snapshot.settings.deepSeek.enabled && !snapshot.settings.strictPrivacy ? t.privacyAiOutboundValue : t.privacyAiDisabled} />
+                <PrivacyFact label={t.privacyRules} value={interpolate(t.privacyRulesValue, { count: snapshot.tabs.filter((tab) => tab.card.userEdited).length })} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="ai" className="mt-0 grid items-start gap-5">
+            <TrustStatusSummary
+              title={t.trustSummary}
+              items={[
+                { label: t.aiStatus, value: canUseAiFeatures(snapshot.settings) ? t.enabled : t.disabled },
+                { label: t.provider, value: snapshot.settings.deepSeek.enabled ? t.providerDeepSeek : t.notYet },
+                { label: t.lastAiCall, value: formatLastAiCall(snapshot, language, t) },
+                { label: t.outboundData, value: snapshot.settings.deepSeek.enabled && !snapshot.settings.strictPrivacy ? t.privacyAiOutboundValue : t.privacyAiDisabled }
+              ]}
+            />
+            <SettingsPanel title={t.deepSeekProvider} description={t.deepSeekDescription}>
+              <SelectRow
+                label={t.aiMode}
+                value={snapshot.settings.aiMode}
+                options={enumOptions("aiMode", ["smart", "local-first", "local-only"], language)}
+                description={t.aiModeDescription}
+                showOptionDescription
+                onChange={(aiMode) => update({ aiMode: aiMode as SettingsType["aiMode"], strictPrivacy: aiMode === "local-only" })}
+              />
+              <ToggleRow
+                label={t.deepSeekEnabled}
+                description={t.deepSeekEnabledDescription}
+                checked={snapshot.settings.deepSeek.enabled}
+                onChange={(enabled) => updateDeepSeek({ enabled })}
+              />
+              <TextRow
+                label={t.deepSeekApiKey}
+                description={t.deepSeekApiKeyDescription}
+                type="password"
+                value={snapshot.settings.deepSeek.apiKey}
+                placeholder="sk-..."
+                onChange={(apiKey) => updateDeepSeek({ apiKey })}
+              />
+              <TextRow
+                label={t.deepSeekModel}
+                description={t.deepSeekModelDescription}
+                value={snapshot.settings.deepSeek.model}
+                placeholder="deepseek-chat"
+                onChange={(model) => updateDeepSeek({ model })}
+              />
+              <TextRow
+                label={t.deepSeekBaseUrl}
+                description={t.deepSeekBaseUrlDescription}
+                value={snapshot.settings.deepSeek.baseUrl}
+                placeholder="https://api.deepseek.com"
+                onChange={(baseUrl) => updateDeepSeek({ baseUrl })}
+              />
+              <div className="flex flex-wrap items-center gap-3">
+                <AsyncButton
+                  className="w-fit"
+                  variant="outline"
+                  busy={deepSeekTesting}
+                  busyLabel={t.deepSeekTesting}
+                  onClick={async () => {
+                    setDeepSeekTesting(true);
+                    setDeepSeekStatus(null);
+                    try {
+                      const result = await testDeepSeek();
+                      setDeepSeekStatusKind("success");
+                      setDeepSeekStatus(`${t.deepSeekTestOk}: ${result.model}${result.content ? ` · ${result.content}` : ""}`);
+                    } catch (error) {
+                      setDeepSeekStatusKind("error");
+                      setDeepSeekStatus(error instanceof Error ? error.message : String(error));
+                    } finally {
+                      setDeepSeekTesting(false);
+                    }
+                  }}
+                >
+                  {t.deepSeekTest}
+                </AsyncButton>
               </div>
-            ) : null}
-            <ToggleRow
-              label={t.resurface}
-              description={snapshot.settings.recordingPaused ? t.resurfacePausedDescription : t.resurfaceDescription}
-              checked={snapshot.settings.resurfaceEnabled}
-              disabled={snapshot.settings.recordingPaused}
-              onChange={(resurfaceEnabled) => update({ resurfaceEnabled })}
-            />
-            <ToggleRow
-              label={t.resurfaceIncludeGhosts}
-              description={t.resurfaceIncludeGhostsDescription}
-              checked={snapshot.settings.resurfaceRule.includeGhostTabs}
-              disabled={snapshot.settings.recordingPaused || !snapshot.settings.resurfaceEnabled}
-              onChange={(includeGhostTabs) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, includeGhostTabs } })}
-            />
-            <SelectRow
-              label={t.resurfaceFrequency}
-              value={String(snapshot.settings.resurfaceRule.maxPerDay)}
-              options={[
-                ...["1", "3", "5", "10", "20", "50"].map((count) => ({ value: count, label: count, description: interpolate(t.resurfaceFrequencyOption, { count }) })),
-                { value: "0", label: t.resurfaceFrequencyAlways, description: t.resurfaceFrequencyAlwaysDescription }
+              {deepSeekTesting ? <PendingBlock title={t.testingConnection} description={t.deepSeekDescription} /> : null}
+              {deepSeekStatus ? <StatusCallout variant={deepSeekStatusKind === "error" ? "error" : "success"} title={deepSeekStatusKind === "error" ? t.actionFailed : t.actionComplete} description={deepSeekStatus} /> : null}
+              <p className="text-xs text-muted-foreground">{t.deepSeekEnhanceDescription}</p>
+            </SettingsPanel>
+          </TabsContent>
+
+          <TabsContent value="rules" className="mt-0 grid items-start gap-5">
+            <TrustStatusSummary
+              title={t.settingsSectionStatus}
+              items={[
+                { label: t.blockedDomains, value: String(snapshot.settings.blacklistDomains.length) },
+                { label: t.localMemory, value: String(snapshot.tabs.length) },
+                { label: t.recordingStatus, value: snapshot.settings.recordingPaused ? t.recordingPausedStatus : t.recordingActiveStatus },
+                { label: t.strictPrivacy, value: snapshot.settings.strictPrivacy ? t.enabled : t.disabled }
               ]}
-              description={t.resurfaceFrequencyDescription}
-              disabled={snapshot.settings.recordingPaused}
-              showOptionDescription
-              onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, maxPerDay: Number(value) } })}
             />
-            <SelectRow
-              label={t.resurfaceCooldown}
-              value={String(snapshot.settings.resurfaceRule.cooldownHours)}
-              options={[
-                { value: "0", label: t.resurfaceCooldownNone, description: t.resurfaceCooldownNoneDescription },
-                ...[
-                  { value: "0.0833333333", label: "5m", minutes: "5" },
-                  { value: "0.25", label: "15m", minutes: "15" },
-                  { value: "0.5", label: "30m", minutes: "30" }
-                ].map((item) => ({ value: item.value, label: item.label, description: interpolate(t.resurfaceCooldownMinutesOption, { minutes: item.minutes }) })),
-                ...["1", "3", "6", "12", "24"].map((hours) => ({ value: hours, label: `${hours}h`, description: interpolate(t.resurfaceCooldownOption, { hours }) }))
+            <SettingsPanel title={t.domainBlacklist} description={t.rulesSettingsDescription}>
+              <textarea className="min-h-64 rounded-md border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={blacklist} onChange={(event) => setBlacklist(event.target.value)} />
+              <p className="text-xs text-muted-foreground">{t.blacklistDescription}</p>
+              <AsyncButton className="w-fit" busy={settingsAction === "blacklist"} busyLabel={t.saving} onClick={() => runWithToast(() => update({ blacklistDomains: blacklist.split("\n").map((item) => item.trim()).filter(Boolean) }), t.blacklistSaved, "blacklist")}>{t.saveBlacklist}</AsyncButton>
+              {settingsAction === "blacklist" ? <PendingBlock title={t.saving} description={t.blacklistDescription} /> : null}
+              {settingsTab === "rules" && settingsStatus ? <StatusCallout variant={settingsStatus.variant} title={settingsStatus.title} description={settingsStatus.description} /> : null}
+            </SettingsPanel>
+          </TabsContent>
+
+          <TabsContent value="data" className="mt-0 grid items-start gap-5">
+            <TrustStatusSummary
+              title={t.settingsSectionStatus}
+              items={[
+                { label: t.localMemory, value: String(snapshot.tabs.length) },
+                { label: t.archived, value: String(snapshot.archivedTabs.length) },
+                { label: t.dataLog, value: String(snapshot.events.length) },
+                { label: t.blockedDomains, value: String(snapshot.settings.blacklistDomains.length) }
               ]}
-              description={t.resurfaceCooldownDescription}
-              disabled={snapshot.settings.recordingPaused}
-              showOptionDescription
-              onChange={(value) => update({ resurfaceRule: { ...snapshot.settings.resurfaceRule, cooldownHours: Number(value) } })}
             />
-          </SettingSection>
-        </CardContent>
-      </Card>
-        </TabsContent>
+            <SettingsPanel title={t.dataPortability} description={t.dataSettingsDescription}>
+              <div className="flex flex-wrap gap-2">
+                <AsyncButton variant="outline" busy={settingsAction === "export"} busyLabel={t.exporting} onClick={() => runWithToast(download, t.dataExported, "export")}><Download className="h-4 w-4" /> {t.exportJson}</AsyncButton>
+                <ImportButton refresh={refresh} />
+                <AsyncButton variant="outline" busy={settingsAction === "history"} busyLabel={t.importing} onClick={() => runWithToast(async () => { await importHistory(); await refresh(); }, t.historyImported, "history")}><History className="h-4 w-4" /> {t.import30dHistory}</AsyncButton>
+                <AsyncButton variant="outline" busy={settingsAction === "demo"} busyLabel={t.importing} onClick={() => runWithToast(async () => { await seedDemo(); await refresh(); }, t.demoLoaded, "demo")}><Sparkles className="h-4 w-4" /> {t.demoWorkspace}</AsyncButton>
+                <AsyncButton variant="destructive" busy={settingsAction === "clear"} busyLabel={t.saving} onClick={() => runWithToast(async () => { await clearData(); await refresh(); }, t.dataCleared, "clear")}><Trash2 className="h-4 w-4" /> {t.clearAll}</AsyncButton>
+              </div>
+              {settingsTab === "data" && settingsAction ? <PendingBlock title={settingsAction === "export" ? t.exporting : settingsAction === "clear" ? t.saving : t.importing} description={t.dataDescription} /> : null}
+              {settingsTab === "data" && settingsStatus ? <StatusCallout variant={settingsStatus.variant} title={settingsStatus.title} description={settingsStatus.description} /> : null}
+            </SettingsPanel>
 
-        <TabsContent value="privacy" className="mt-4 grid items-start gap-5">
-      <TrustStatusSummary
-        title={t.trustSummary}
-        items={[
-          { label: t.recordingStatus, value: snapshot.settings.recordingPaused ? t.recordingPausedStatus : t.recordingActiveStatus },
-          { label: t.strictPrivacy, value: snapshot.settings.strictPrivacy ? t.enabled : t.disabled },
-          { label: t.blockedDomains, value: String(snapshot.settings.blacklistDomains.length) },
-          { label: t.localMemory, value: String(snapshot.tabs.length) }
-        ]}
-      />
-      <Card>
-        <CardContent className="grid gap-6 p-5">
-          <ToggleRow label={t.pauseRecording} description={t.pauseRecordingDescription} checked={snapshot.settings.recordingPaused} onChange={(recordingPaused) => update({ recordingPaused })} />
-          <ToggleRow label={t.strictPrivacy} description={t.strictPrivacyDescription} checked={snapshot.settings.strictPrivacy} onChange={(strictPrivacy) => update({ strictPrivacy, aiMode: strictPrivacy ? "local-only" : snapshot.settings.aiMode })} />
-        </CardContent>
-      </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.dataLog}</CardTitle>
+                <CardDescription>{snapshot.events.length} local events</CardDescription>
+              </CardHeader>
+              <CardContent className="max-h-56 overflow-auto text-xs">
+                {snapshot.events.slice(-80).reverse().map((event) => (
+                  <div key={`${event.createdAt}-${event.type}`} className="grid gap-1 border-b py-2 md:grid-cols-[150px_150px_minmax(180px,1fr)_minmax(220px,1.2fr)] md:gap-3">
+                    <span className="text-muted-foreground">{new Date(event.createdAt).toLocaleString()}</span>
+                    <span className="font-medium">{formatEventType(event.type)}</span>
+                    <span className="truncate" title={eventMetaText(event, "title")}>{eventMetaText(event, "title") || eventMetaText(event, "domain") || "-"}</span>
+                    <span className="truncate text-muted-foreground" title={eventMetaText(event, "url") || eventMetaText(event, "urls") || JSON.stringify(event.meta ?? {})}>
+                      {eventMetaText(event, "url") || eventMetaText(event, "urls") || JSON.stringify(event.meta ?? {})}
+                    </span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t.privacyMap}</CardTitle>
-          <CardDescription>{t.privacyMapDescription}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
-          <PrivacyFact label={t.privacyLocalFields} value={t.privacyLocalFieldsValue} />
-          <PrivacyFact label={t.privacyNeverCaptured} value={t.privacyNeverCapturedValue} />
-          <PrivacyFact label={t.privacyAiOutbound} value={snapshot.settings.deepSeek.enabled && !snapshot.settings.strictPrivacy ? t.privacyAiOutboundValue : t.privacyAiDisabled} />
-          <PrivacyFact label={t.privacyRules} value={interpolate(t.privacyRulesValue, { count: snapshot.tabs.filter((tab) => tab.card.userEdited).length })} />
-        </CardContent>
-      </Card>
-        </TabsContent>
-        <TabsContent value="ai" className="mt-4 grid items-start gap-5">
-      <TrustStatusSummary
-        title={t.trustSummary}
-        items={[
-          { label: t.aiStatus, value: canUseAiFeatures(snapshot.settings) ? t.enabled : t.disabled },
-          { label: t.provider, value: snapshot.settings.deepSeek.enabled ? t.providerDeepSeek : t.notYet },
-          { label: t.lastAiCall, value: formatLastAiCall(snapshot, language, t) },
-          { label: t.outboundData, value: snapshot.settings.deepSeek.enabled && !snapshot.settings.strictPrivacy ? t.privacyAiOutboundValue : t.privacyAiDisabled }
-        ]}
-      />
-      <Card>
-        <CardContent className="grid gap-6 p-5">
-          <div>
-            <CardTitle>{t.deepSeekProvider}</CardTitle>
-            <CardDescription>{t.deepSeekDescription}</CardDescription>
-          </div>
-          <SelectRow
-            label={t.aiMode}
-            value={snapshot.settings.aiMode}
-            options={enumOptions("aiMode", ["smart", "local-first", "local-only"], language)}
-            description={t.aiModeDescription}
-            showOptionDescription
-            onChange={(aiMode) => update({ aiMode: aiMode as SettingsType["aiMode"], strictPrivacy: aiMode === "local-only" })}
-          />
-          <ToggleRow
-            label={t.deepSeekEnabled}
-            description={t.deepSeekEnabledDescription}
-            checked={snapshot.settings.deepSeek.enabled}
-            onChange={(enabled) => updateDeepSeek({ enabled })}
-          />
-          <TextRow
-            label={t.deepSeekApiKey}
-            description={t.deepSeekApiKeyDescription}
-            type="password"
-            value={snapshot.settings.deepSeek.apiKey}
-            placeholder="sk-..."
-            onChange={(apiKey) => updateDeepSeek({ apiKey })}
-          />
-          <TextRow
-            label={t.deepSeekModel}
-            description={t.deepSeekModelDescription}
-            value={snapshot.settings.deepSeek.model}
-            placeholder="deepseek-chat"
-            onChange={(model) => updateDeepSeek({ model })}
-          />
-          <TextRow
-            label={t.deepSeekBaseUrl}
-            description={t.deepSeekBaseUrlDescription}
-            value={snapshot.settings.deepSeek.baseUrl}
-            placeholder="https://api.deepseek.com"
-            onChange={(baseUrl) => updateDeepSeek({ baseUrl })}
-          />
-          <div className="flex flex-wrap items-center gap-3">
-            <AsyncButton
-              className="w-fit"
-              variant="outline"
-              busy={deepSeekTesting}
-              busyLabel={t.deepSeekTesting}
-              onClick={async () => {
-                setDeepSeekTesting(true);
-                setDeepSeekStatus(null);
-                try {
-                  const result = await testDeepSeek();
-                  setDeepSeekStatusKind("success");
-                  setDeepSeekStatus(`${t.deepSeekTestOk}: ${result.model}${result.content ? ` · ${result.content}` : ""}`);
-                } catch (error) {
-                  setDeepSeekStatusKind("error");
-                  setDeepSeekStatus(error instanceof Error ? error.message : String(error));
-                } finally {
-                  setDeepSeekTesting(false);
-                }
-              }}
-            >
-              {t.deepSeekTest}
-            </AsyncButton>
-          </div>
-          {deepSeekTesting ? <PendingBlock title={t.testingConnection} description={t.deepSeekDescription} /> : null}
-          {deepSeekStatus ? <StatusCallout variant={deepSeekStatusKind === "error" ? "error" : "success"} title={deepSeekStatusKind === "error" ? t.actionFailed : t.actionComplete} description={deepSeekStatus} /> : null}
-          <p className="text-xs text-muted-foreground">{t.deepSeekEnhanceDescription}</p>
-        </CardContent>
-      </Card>
-        </TabsContent>
-        <TabsContent value="rules" className="mt-4 grid items-start gap-5">
-      <Card>
-        <CardContent className="grid gap-5 p-5">
-          <div>
-            <CardTitle>{t.domainBlacklist}</CardTitle>
-            <CardDescription>{t.blacklistDescription}</CardDescription>
-          </div>
-          <textarea className="min-h-96 rounded-md border bg-background p-3 text-sm outline-none focus:ring-2 focus:ring-ring" value={blacklist} onChange={(event) => setBlacklist(event.target.value)} />
-          <AsyncButton className="w-fit" busy={settingsAction === "blacklist"} busyLabel={t.saving} onClick={() => runWithToast(() => update({ blacklistDomains: blacklist.split("\n").map((item) => item.trim()).filter(Boolean) }), t.blacklistSaved, "blacklist")}>{t.saveBlacklist}</AsyncButton>
-          {settingsAction === "blacklist" ? <PendingBlock title={t.saving} description={t.blacklistDescription} /> : null}
-          {settingsTab === "rules" && settingsStatus ? <StatusCallout variant={settingsStatus.variant} title={settingsStatus.title} description={settingsStatus.description} /> : null}
-        </CardContent>
-      </Card>
-        </TabsContent>
-        <TabsContent value="data" className="mt-4 grid items-start gap-5">
-      <Card>
-        <CardContent className="grid gap-5 p-5">
-          <div>
-            <CardTitle>{t.dataPortability}</CardTitle>
-            <CardDescription>{t.dataDescription}</CardDescription>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <AsyncButton variant="outline" busy={settingsAction === "export"} busyLabel={t.exporting} onClick={() => runWithToast(download, t.dataExported, "export")}><Download className="h-4 w-4" /> {t.exportJson}</AsyncButton>
-            <ImportButton refresh={refresh} />
-            <AsyncButton variant="outline" busy={settingsAction === "history"} busyLabel={t.importing} onClick={() => runWithToast(async () => { await importHistory(); await refresh(); }, t.historyImported, "history")}><History className="h-4 w-4" /> {t.import30dHistory}</AsyncButton>
-            <AsyncButton variant="outline" busy={settingsAction === "demo"} busyLabel={t.importing} onClick={() => runWithToast(async () => { await seedDemo(); await refresh(); }, t.demoLoaded, "demo")}><Sparkles className="h-4 w-4" /> {t.demoWorkspace}</AsyncButton>
-            <AsyncButton variant="destructive" busy={settingsAction === "clear"} busyLabel={t.saving} onClick={() => runWithToast(async () => { await clearData(); await refresh(); }, t.dataCleared, "clear")}><Trash2 className="h-4 w-4" /> {t.clearAll}</AsyncButton>
-          </div>
-          {settingsTab === "data" && settingsAction ? <PendingBlock title={settingsAction === "export" ? t.exporting : settingsAction === "clear" ? t.saving : t.importing} description={t.dataDescription} /> : null}
-          {settingsTab === "data" && settingsStatus ? <StatusCallout variant={settingsStatus.variant} title={settingsStatus.title} description={settingsStatus.description} /> : null}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t.dataLog}</CardTitle>
-          <CardDescription>{snapshot.events.length} local events</CardDescription>
-        </CardHeader>
-        <CardContent className="max-h-56 overflow-auto text-xs">
-          {snapshot.events.slice(-80).reverse().map((event) => (
-            <div key={`${event.createdAt}-${event.type}`} className="grid gap-1 border-b py-2 md:grid-cols-[150px_150px_minmax(180px,1fr)_minmax(220px,1.2fr)] md:gap-3">
-              <span className="text-muted-foreground">{new Date(event.createdAt).toLocaleString()}</span>
-              <span className="font-medium">{formatEventType(event.type)}</span>
-              <span className="truncate" title={eventMetaText(event, "title")}>{eventMetaText(event, "title") || eventMetaText(event, "domain") || "-"}</span>
-              <span className="truncate text-muted-foreground" title={eventMetaText(event, "url") || eventMetaText(event, "urls") || JSON.stringify(event.meta ?? {})}>
-                {eventMetaText(event, "url") || eventMetaText(event, "urls") || JSON.stringify(event.meta ?? {})}
-              </span>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t.leaderboard}</CardTitle>
-          <CardDescription>{t.localOnlyStub}</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-3">
-          <Metric label="Archived" value={snapshot.archivedTabs.length} />
-          <Metric label="Restored" value={snapshot.tabs.reduce((sum, tab) => sum + tab.signals.restoreClicks, 0)} />
-          <Metric label="Recall events" value={snapshot.events.filter((event) => event.type === "result_opened").length} />
-        </CardContent>
-      </Card>
-        </TabsContent>
+            <Card>
+              <CardHeader>
+                <CardTitle>{t.leaderboard}</CardTitle>
+                <CardDescription>{t.localOnlyStub}</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-3">
+                <Metric label="Archived" value={snapshot.archivedTabs.length} />
+                <Metric label="Restored" value={snapshot.tabs.reduce((sum, tab) => sum + tab.signals.restoreClicks, 0)} />
+                <Metric label="Recall events" value={snapshot.events.filter((event) => event.type === "result_opened").length} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </div>
       </Tabs>
       <LogoShowcase open={logoOpen} onOpenChange={setLogoOpen} />
     </main>
+  );
+}
+
+function SettingsNavTrigger({
+  value,
+  title,
+  description,
+  icon
+}: {
+  value: string;
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <TabsTrigger
+      value={value}
+      className="group h-auto w-full justify-start rounded-md px-3 py-2.5 text-left data-[state=active]:bg-background"
+    >
+      <span className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-background text-muted-foreground group-data-[state=active]:text-foreground">
+          {icon}
+        </span>
+        <span className="grid min-w-0 flex-1 gap-0.5">
+          <span className="truncate text-sm font-medium">{title}</span>
+          <span className="line-clamp-2 text-xs font-normal leading-4 text-muted-foreground">{description}</span>
+        </span>
+      </span>
+    </TabsTrigger>
+  );
+}
+
+function SettingsPanel({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-6">{children}</CardContent>
+    </Card>
   );
 }
 
@@ -2818,7 +2940,7 @@ function SectionHeader({ title, description }: { title: string; description: str
 
 function ToggleRow({ label, description, checked, disabled, onChange }: { label: string; description: string; checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
   return (
-    <label className={`flex items-center justify-between gap-4 rounded-md border p-2.5 ${disabled ? "opacity-60" : ""}`}>
+    <label className={`flex items-center justify-between gap-4 rounded-md border bg-background p-3 ${disabled ? "opacity-60" : ""}`}>
       <span className="min-w-0">
         <SettingLabel label={label} description={description} />
       </span>
@@ -2847,7 +2969,7 @@ function TextRow({
   const isPassword = type === "password";
   const inputType = isPassword && passwordVisible ? "text" : type;
   return (
-    <label className="grid gap-1 text-sm">
+    <label className="grid gap-2 text-sm">
       <SettingLabel label={label} description={description} />
       <span className="relative">
         <Input
@@ -2895,7 +3017,7 @@ function SelectRow({
   const normalizedOptions = options.map((option) => (typeof option === "string" ? { value: option, label: option } : option));
   const selectedOption = normalizedOptions.find((option) => option.value === value);
   return (
-    <label className={`grid min-w-0 gap-1 text-sm ${disabled ? "opacity-60" : ""}`}>
+    <label className={`grid min-w-0 gap-2 text-sm ${disabled ? "opacity-60" : ""}`}>
       <SettingLabel label={label} description={description} />
       <Select value={value} disabled={disabled} onValueChange={onChange}>
         <SelectTrigger>
@@ -2914,9 +3036,9 @@ function SelectRow({
 
 function SettingLabel({ label, description }: { label: string; description?: string }) {
   return (
-    <span className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-      <span className="text-sm font-medium">{label}</span>
-      {description ? <span className="text-xs text-muted-foreground">{description}</span> : null}
+    <span className="grid min-w-0 gap-1">
+      <span className="text-sm font-medium leading-none">{label}</span>
+      {description ? <span className="text-xs leading-5 text-muted-foreground">{description}</span> : null}
     </span>
   );
 }
@@ -2925,7 +3047,7 @@ function SettingSection({ title, children }: { title: string; children: React.Re
   return (
     <section className="grid gap-5">
       <h3 className="text-sm font-semibold">{title}</h3>
-      <div className="grid gap-5 rounded-md border p-4">{children}</div>
+      <div className="grid gap-5 rounded-md border bg-muted/15 p-4">{children}</div>
     </section>
   );
 }
