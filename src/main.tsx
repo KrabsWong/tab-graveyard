@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, Bell, CheckCircle2, Copy, Database, Download, Edit3, Eye, EyeOff, FileUp, Ghost, History, Layers, Loader2, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2 } from "lucide-react";
+import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, BarChart3, Bell, CheckCircle2, Copy, Database, Download, Edit3, Eye, EyeOff, FileUp, Ghost, History, Layers, Loader2, PieChart, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, TrendingUp } from "lucide-react";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
 import { archiveGhosts, archiveTab, cancelArchivePreview, clearData, confirmArchivePreview, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
-import type { AppSnapshot, BrowseGroupMode, LanguageMode, RecallFilters, RecallResult, RecallSynthesisResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
+import type { AppSnapshot, BrowseGroupMode, ContentType, LanguageMode, RecallFilters, RecallResult, RecallSynthesisResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type Page = "popup" | "newtab" | "dashboard" | "options";
 type UiLanguage = "en" | "zh";
+type DashboardTab = "analytics" | "recall" | "ghosts" | "graveyard" | "sessions";
 
 const messages = {
   en: {
@@ -624,7 +626,7 @@ function AppLogo({ size = "md", onClick }: { size?: "sm" | "md" | "lg"; onClick?
 }
 
 function LogoShowcase({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-background/80 p-6 backdrop-blur-sm" onClick={() => onOpenChange(false)}>
@@ -795,10 +797,10 @@ function enumOptions(kind: EnumKind, values: string[], language: UiLanguage) {
 
 function getDashboardTabFromHash() {
   const value = window.location.hash.replace("#", "");
-  return ["recall", "ghosts", "graveyard", "sessions"].includes(value) ? value : "recall";
+  return ["analytics", "recall", "ghosts", "graveyard", "sessions"].includes(value) ? value as DashboardTab : "recall";
 }
 
-function navigateDashboard(tab: "ghosts" | "graveyard" | "sessions" | "recall") {
+function navigateDashboard(tab: DashboardTab) {
   const path = `dashboard.html#${tab}`;
   if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
     window.location.href = chrome.runtime.getURL(path);
@@ -1063,7 +1065,7 @@ function RecallSearchBar({
   aiAvailable: boolean;
   fallbackReason?: string;
 }) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const modeLabel = fallbackReason ? t.localRecall : aiAvailable ? t.aiRecallOn : t.localRecall;
   return (
     <div className={cn("rounded-md border bg-background", aiAvailable && !fallbackReason ? "border-primary/20" : "border-border")}>
@@ -1122,7 +1124,7 @@ function Dashboard({
   refresh: () => Promise<void>;
   isSearching: boolean;
 }) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
   const [activeTab, setActiveTab] = useState(() => getDashboardTabFromHash());
   useEffect(() => {
     const handleHash = () => setActiveTab(getDashboardTabFromHash());
@@ -1130,7 +1132,7 @@ function Dashboard({
     return () => window.removeEventListener("hashchange", handleHash);
   }, []);
   const setDashboardTab = (value: string) => {
-    setActiveTab(value);
+    setActiveTab(value as DashboardTab);
     window.history.replaceState(null, "", `#${value}`);
   };
   const matchedIds = useMemo(() => new Set(results.map((tab) => tab.id)), [results]);
@@ -1150,6 +1152,7 @@ function Dashboard({
         <TabsTrigger value="ghosts">{t.ghostTabs} <TabCount value={scopedGhostTabs.length} /></TabsTrigger>
         <TabsTrigger value="graveyard">{t.graveyard} <TabCount value={scopedArchivedTabs.length} /></TabsTrigger>
         <TabsTrigger value="sessions">{t.sessions} <TabCount value={scopedSessions.length} /></TabsTrigger>
+        <TabsTrigger value="analytics" className="ml-2 border-l border-border/80 pl-4">{language === "zh" ? "看板" : "Analytics"} <TabCount value={snapshot.totalTabs} /></TabsTrigger>
       </TabsList>
       <TabsContent value="recall">
         <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(150px,210px)_minmax(0,1fr)]">
@@ -1169,8 +1172,964 @@ function Dashboard({
       <TabsContent value="sessions">
         <SessionManager snapshot={snapshot} sessions={scopedSessions} visibleTabIds={hasGlobalQuery ? matchedIds : undefined} refresh={refresh} />
       </TabsContent>
+      <TabsContent value="analytics">
+        <AnalyticsPanel snapshot={snapshot} refresh={refresh} />
+      </TabsContent>
     </Tabs>
   );
+}
+
+const analyticsTypeOrder: ContentType[] = ["article", "doc", "pdf", "video", "repo", "tweet", "image", "saas"];
+const analyticsTypeColors: Record<ContentType, string> = {
+  article: "#0ea5e9",
+  doc: "#14b8a6",
+  pdf: "#f59e0b",
+  video: "#f97316",
+  repo: "#ec4899",
+  tweet: "#8b5cf6",
+  image: "#84cc16",
+  saas: "#64748b"
+};
+
+type AnalyticsWeek = {
+  key: string;
+  label: string;
+  shortLabel: string;
+  start: number;
+  end: number;
+  total: number;
+  typeCounts: Record<ContentType, number>;
+  ghost7: number;
+  ghost30: number;
+  ghost90: number;
+};
+
+type RankItem = {
+  label: string;
+  value: number;
+  percent: number;
+};
+
+type AnalyticsDrilldown = {
+  id: string;
+  title: string;
+  description: string;
+  accentColor?: string;
+  tabs: TabMemory[];
+};
+
+function AnalyticsPanel({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: () => Promise<void> }) {
+  const { language, t } = useI18n();
+  const labels = getAnalyticsLabels(language);
+  const [drilldown, setDrilldown] = useState<AnalyticsDrilldown | null>(null);
+  const analytics = useMemo(() => buildAnalytics(snapshot), [snapshot]);
+  const topType = analytics.typeShare[0];
+  const ghostIds = useMemo(() => new Set(snapshot.ghostTabs.map((tab) => tab.id)), [snapshot.ghostTabs]);
+  const sortRecent = (tabs: TabMemory[]) => [...tabs].sort((a, b) => b.lastActivatedAt - a.lastActivatedAt);
+  const openActivityDrilldown = (week: AnalyticsWeek, type: ContentType) => {
+    const typeLabel = enumMeta("contentType", type, language).label;
+    const tabs = sortRecent(snapshot.tabs.filter((tab) => tab.openedAt >= week.start && tab.openedAt < week.end && tab.card.contentType === type));
+    setDrilldown({
+      id: `activity-${week.key}-${type}`,
+      title: `${typeLabel} · ${week.label}`,
+      description: `${labels.addedLinks}: ${tabs.length}`,
+      accentColor: analyticsTypeColors[type],
+      tabs
+    });
+  };
+  const openTypeDrilldown = (type: ContentType) => {
+    const typeLabel = enumMeta("contentType", type, language).label;
+    const tabs = sortRecent(snapshot.tabs.filter((tab) => tab.card.contentType === type));
+    setDrilldown({
+      id: `type-${type}`,
+      title: typeLabel,
+      description: `${labels.linkShare}: ${tabs.length} ${t.links}`,
+      accentColor: analyticsTypeColors[type],
+      tabs
+    });
+  };
+  const openGhostDrilldown = (week: AnalyticsWeek, bucket: GhostBucket) => {
+    const tabs = sortRecent(snapshot.tabs.filter((tab) => tab.lastActivatedAt >= week.start && tab.lastActivatedAt < week.end && getGhostBucket(tab) === bucket));
+    setDrilldown({
+      id: `ghost-${week.key}-${bucket}`,
+      title: `${ghostBucketLabel(bucket, labels)} · ${week.label}`,
+      description: `${labels.ghostLinks}: ${tabs.length}`,
+      accentColor: ghostBucketColor(bucket),
+      tabs
+    });
+  };
+  const openDomainDrilldown = (item: RankItem, ghostOnly = false) => {
+    const domain = item.label;
+    const sourceTabs = ghostOnly ? snapshot.ghostTabs : snapshot.tabs;
+    const tabs = sortRecent(sourceTabs.filter((tab) => tab.domain === domain));
+    setDrilldown({
+      id: `${ghostOnly ? "ghost-domain" : "domain"}-${domain}`,
+      title: domain,
+      description: ghostOnly
+        ? `${labels.ghostLinks}: ${tabs.length} ${t.links}`
+        : `${labels.domainLinks}: ${tabs.length} ${t.links} · ${labels.domainVisits}: ${formatNumber(item.value)}`,
+      tabs
+    });
+  };
+  return (
+    <div className="grid gap-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <AnalyticsMetric icon={<Database className="h-4 w-4" />} label={labels.totalLinks} value={snapshot.totalTabs} detail={labels.localMemory} />
+        <AnalyticsMetric icon={<TrendingUp className="h-4 w-4" />} label={labels.weeklyNew} value={analytics.weeklyNew} detail={formatDelta(analytics.weeklyNew, analytics.previousWeeklyNew, language)} />
+        <AnalyticsMetric icon={<Eye className="h-4 w-4" />} label={labels.weeklyVisits} value={analytics.weeklyVisits} detail={formatDelta(analytics.weeklyVisits, analytics.previousWeeklyVisits, language)} />
+        <AnalyticsMetric icon={<Ghost className="h-4 w-4" />} label={labels.ghostLinks} value={snapshot.ghostTabs.length} detail={formatPercent(snapshot.ghostTabs.length, Math.max(snapshot.totalTabs, 1), language)} />
+        <AnalyticsMetric icon={<Archive className="h-4 w-4" />} label={labels.archivedLinks} value={snapshot.archivedTabs.length} detail={formatPercent(snapshot.archivedTabs.length, Math.max(snapshot.totalTabs, 1), language)} />
+        <AnalyticsMetric icon={<Sparkles className="h-4 w-4" />} label={labels.cleanupCandidates} value={analytics.cleanupCandidates} detail={labels.duplicates.replace("{count}", String(analytics.duplicateLinks))} />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
+        <StackedActivityChart weeks={analytics.weeks} labels={labels} language={language} onDrilldown={openActivityDrilldown} />
+        <TypeShareCard typeShare={analytics.typeShare} topType={topType} labels={labels} language={language} onDrilldown={openTypeDrilldown} />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(360px,0.9fr)]">
+        <GhostTrendChart weeks={analytics.weeks} labels={labels} onDrilldown={openGhostDrilldown} />
+        <div className="grid gap-5">
+          <RankingCard icon={<BarChart3 className="h-4 w-4" />} title={labels.topDomains} description={labels.topDomainsDescription} items={analytics.topVisitDomains} emptyLabel={labels.noData} onDrilldown={(item) => openDomainDrilldown(item)} />
+          <RankingCard icon={<Ghost className="h-4 w-4" />} title={labels.ghostDomains} description={labels.ghostDomainsDescription} items={analytics.topGhostDomains} emptyLabel={labels.noData} onDrilldown={(item) => openDomainDrilldown(item, true)} />
+        </div>
+      </div>
+
+      {drilldown ? (
+        <AnalyticsDrilldownPanel
+          drilldown={drilldown}
+          refresh={refresh}
+          ghostIds={ghostIds}
+          emptyLabel={labels.noData}
+          closeLabel={t.close}
+          onClose={() => setDrilldown(null)}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AnalyticsMetric({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: number; detail: string }) {
+  return (
+    <Card>
+      <CardContent className="grid gap-2 p-4">
+        <div className="flex items-center justify-between gap-2 text-muted-foreground">
+          <span className="text-xs font-medium">{label}</span>
+          {icon}
+        </div>
+        <div className="text-2xl font-semibold tabular-nums">{formatNumber(value)}</div>
+        <div className="truncate text-xs text-muted-foreground">{detail}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function StackedActivityChart({
+  weeks,
+  labels,
+  language,
+  onDrilldown
+}: {
+  weeks: AnalyticsWeek[];
+  labels: AnalyticsLabels;
+  language: UiLanguage;
+  onDrilldown: (week: AnalyticsWeek, type: ContentType) => void;
+}) {
+  const [hoveredType, setHoveredType] = useState<ContentType | null>(null);
+  const data = weeks.map((week) => ({
+    weekKey: week.key,
+    label: week.label,
+    shortLabel: week.shortLabel,
+    total: week.total,
+    ...week.typeCounts
+  }));
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><BarChart3 className="h-4 w-4" /> {labels.topActivity}</CardTitle>
+        <CardDescription>{labels.topActivityDescription}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div className="h-72 min-w-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -24 }}>
+              <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+              <XAxis dataKey="shortLabel" tickLine={false} axisLine={{ stroke: "hsl(var(--border))" }} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} interval={1} />
+              <YAxis allowDecimals={false} tickLine={false} axisLine={{ stroke: "hsl(var(--border))" }} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+              <ChartTooltip shared={true} content={<ActivityChartTooltip labels={labels} language={language} hoveredType={hoveredType} />} cursor={false} />
+              {analyticsTypeOrder.map((type) => (
+                <Bar
+                  key={type}
+                  dataKey={type}
+                  stackId="links"
+                  fill={analyticsTypeColors[type]}
+                  className="cursor-pointer"
+                  opacity={hoveredType && hoveredType !== type ? 0.42 : 1}
+                  activeBar={false}
+                  onMouseEnter={() => setHoveredType(type)}
+                  onMouseMove={() => setHoveredType(type)}
+                  onMouseOver={() => setHoveredType(type)}
+                  onMouseLeave={() => setHoveredType(null)}
+                  onClick={(entry) => {
+                    const week = weeks.find((item) => item.key === String(entry?.payload?.weekKey));
+                    if (week && Number(entry?.payload?.[type] ?? 0) > 0) onDrilldown(week, type);
+                  }}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <TypeLegend language={language} />
+      </CardContent>
+    </Card>
+  );
+}
+
+function TypeShareCard({
+  typeShare,
+  topType,
+  labels,
+  language,
+  onDrilldown
+}: {
+  typeShare: RankItem[];
+  topType?: RankItem;
+  labels: AnalyticsLabels;
+  language: UiLanguage;
+  onDrilldown: (type: ContentType) => void;
+}) {
+  const [hoveredType, setHoveredType] = useState<ContentType | null>(null);
+  const topTypeLabel = topType ? enumMeta("contentType", topType.label, language).label : "";
+  const shareRow = typeShare.reduce<Record<string, string | number>>((row, item) => {
+    row[item.label] = item.percent;
+    return row;
+  }, { name: labels.linkShare });
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><PieChart className="h-4 w-4" /> {labels.linkShare}</CardTitle>
+        <CardDescription>{topType ? labels.linkShareDescription.replace("{type}", topTypeLabel).replace("{percent}", `${topType.percent.toFixed(1)}%`) : labels.noData}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div className="h-20 min-w-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={[shareRow]} layout="vertical" margin={{ top: 10, right: 8, bottom: 10, left: 8 }}>
+              <XAxis type="number" hide domain={[0, 100]} />
+              <YAxis type="category" dataKey="name" hide />
+              <ChartTooltip shared={true} content={<ShareChartTooltip language={language} hoveredType={hoveredType} />} cursor={false} />
+              {analyticsTypeOrder.map((type) => (
+                <Bar
+                  key={type}
+                  dataKey={type}
+                  stackId="share"
+                  fill={analyticsTypeColors[type]}
+                  className="cursor-pointer"
+                  opacity={hoveredType && hoveredType !== type ? 0.42 : 1}
+                  activeBar={false}
+                  onMouseEnter={() => setHoveredType(type)}
+                  onMouseMove={() => setHoveredType(type)}
+                  onMouseOver={() => setHoveredType(type)}
+                  onMouseLeave={() => setHoveredType(null)}
+                  onClick={(entry) => {
+                    if (Number(entry?.payload?.[type] ?? 0) > 0) onDrilldown(type);
+                  }}
+                />
+              ))}
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="grid gap-3">
+          {typeShare.map((item, index) => {
+            const type = item.label as ContentType;
+            return (
+              <button key={item.label} type="button" className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md py-0.5 text-left text-sm hover:bg-muted/40" onClick={() => onDrilldown(type)}>
+                <span className="text-right text-muted-foreground">{index + 1}.</span>
+                <span className="flex min-w-0 items-center gap-2 truncate font-medium">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: analyticsTypeColors[type] }} />
+                  {enumMeta("contentType", type, language).label}
+                </span>
+                <span className="text-right tabular-nums text-muted-foreground">{item.value} · {item.percent.toFixed(1)}%</span>
+              </button>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function GhostTrendChart({ weeks, labels, onDrilldown }: { weeks: AnalyticsWeek[]; labels: AnalyticsLabels; onDrilldown: (week: AnalyticsWeek, bucket: GhostBucket) => void }) {
+  const [hoveredBucket, setHoveredBucket] = useState<GhostBucket | null>(null);
+  const data = weeks.map((week) => ({
+    weekKey: week.key,
+    label: week.label,
+    shortLabel: week.shortLabel,
+    [labels.inactive7]: week.ghost7,
+    [labels.inactive30]: week.ghost30,
+    [labels.inactive90]: week.ghost90
+  }));
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2"><Ghost className="h-4 w-4" /> {labels.ghostTrend}</CardTitle>
+        <CardDescription>{labels.ghostTrendDescription}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <div className="h-64 min-w-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -24 }}>
+              <CartesianGrid vertical={false} stroke="hsl(var(--border))" />
+              <XAxis dataKey="shortLabel" tickLine={false} axisLine={{ stroke: "hsl(var(--border))" }} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} interval={1} />
+              <YAxis allowDecimals={false} tickLine={false} axisLine={{ stroke: "hsl(var(--border))" }} tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }} />
+              <ChartTooltip shared={true} content={<GhostChartTooltip labels={labels} hoveredBucket={hoveredBucket} />} cursor={false} />
+              <Bar dataKey={labels.inactive7} stackId="ghosts" fill={ghostBucketColor("7d")} className="cursor-pointer" opacity={hoveredBucket && hoveredBucket !== "7d" ? 0.42 : 1} activeBar={false} onMouseEnter={() => setHoveredBucket("7d")} onMouseMove={() => setHoveredBucket("7d")} onMouseOver={() => setHoveredBucket("7d")} onMouseLeave={() => setHoveredBucket(null)} onClick={(entry) => handleGhostBarClick(entry, weeks, labels.inactive7, "7d", onDrilldown)} />
+              <Bar dataKey={labels.inactive30} stackId="ghosts" fill={ghostBucketColor("30d")} className="cursor-pointer" opacity={hoveredBucket && hoveredBucket !== "30d" ? 0.42 : 1} activeBar={false} onMouseEnter={() => setHoveredBucket("30d")} onMouseMove={() => setHoveredBucket("30d")} onMouseOver={() => setHoveredBucket("30d")} onMouseLeave={() => setHoveredBucket(null)} onClick={(entry) => handleGhostBarClick(entry, weeks, labels.inactive30, "30d", onDrilldown)} />
+              <Bar dataKey={labels.inactive90} stackId="ghosts" fill={ghostBucketColor("90d")} className="cursor-pointer" opacity={hoveredBucket && hoveredBucket !== "90d" ? 0.42 : 1} activeBar={false} radius={[3, 3, 0, 0]} onMouseEnter={() => setHoveredBucket("90d")} onMouseMove={() => setHoveredBucket("90d")} onMouseOver={() => setHoveredBucket("90d")} onMouseLeave={() => setHoveredBucket(null)} onClick={(entry) => handleGhostBarClick(entry, weeks, labels.inactive90, "90d", onDrilldown)} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+          <LegendDot color="#94a3b8" label={labels.inactive7} />
+          <LegendDot color="#f59e0b" label={labels.inactive30} />
+          <LegendDot color="#f43f5e" label={labels.inactive90} />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RankingCard({
+  icon,
+  title,
+  description,
+  items,
+  emptyLabel,
+  onDrilldown
+}: {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  items: RankItem[];
+  emptyLabel: string;
+  onDrilldown?: (item: RankItem) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">{icon} {title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-3">
+        {items.length ? items.map((item, index) => (
+          <button
+            key={item.label}
+            type="button"
+            className="grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-md py-1 text-left text-sm hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => onDrilldown?.(item)}
+          >
+            <span className="text-right text-muted-foreground">{index + 1}.</span>
+            <div className="min-w-0">
+              <div className="truncate font-medium">{item.label}</div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary" style={{ width: `${Math.max(item.percent, 4)}%` }} />
+              </div>
+            </div>
+            <div className="text-right tabular-nums text-muted-foreground">
+              <div>{formatNumber(item.value)}</div>
+              <div className="text-xs">{item.percent.toFixed(1)}%</div>
+            </div>
+          </button>
+        )) : <div className="py-6 text-center text-sm text-muted-foreground">{emptyLabel}</div>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function AnalyticsDrilldownPanel({
+  drilldown,
+  refresh,
+  ghostIds,
+  emptyLabel,
+  closeLabel,
+  onClose
+}: {
+  drilldown: AnalyticsDrilldown;
+  refresh: () => Promise<void>;
+  ghostIds: Set<string>;
+  emptyLabel: string;
+  closeLabel: string;
+  onClose: () => void;
+}) {
+  const { language, t } = useI18n();
+  const drilldownLabel = language === "zh" ? "下钻结果" : "Drilldown";
+  return (
+    <div className="analytics-drilldown-backdrop fixed inset-0 z-40 bg-background/45 backdrop-blur-[1px]" onClick={onClose}>
+      <aside
+        className="analytics-drilldown-drawer fixed bottom-0 right-0 top-0 z-50 flex w-full max-w-xl flex-col overflow-x-hidden border-l bg-background shadow-xl sm:w-[560px]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b px-4 py-4">
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase text-muted-foreground">{drilldownLabel}</span>
+              {drilldown.accentColor ? <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: drilldown.accentColor }} /> : null}
+            </div>
+            <h3 className="break-words text-lg font-semibold leading-6">{drilldown.title}</h3>
+            <p className="mt-1 break-words text-sm font-medium text-foreground/75">{drilldown.description}</p>
+          </div>
+          <Button variant="outline" size="sm" onClick={onClose}>{closeLabel}</Button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3">
+          {drilldown.tabs.length ? (
+            <div className="grid gap-2">
+              {drilldown.tabs.map((tab) => (
+                <AnalyticsDrilldownRow key={tab.id} tab={tab} refresh={refresh} isGhost={ghostIds.has(tab.id)} />
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-sm text-muted-foreground">{emptyLabel}</div>
+          )}
+        </div>
+        <div className="border-t px-4 py-2 text-xs text-muted-foreground">
+          {drilldown.tabs.length} {t.links}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function AnalyticsDrilldownRow({ tab, refresh, isGhost }: { tab: TabMemory; refresh: () => Promise<void>; isGhost: boolean }) {
+  const { language, t } = useI18n();
+  const notify = useToast();
+  const [restoring, setRestoring] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [imagePreviewFailed, setImagePreviewFailed] = useState(false);
+  const contentType = enumMeta("contentType", tab.card.contentType, language).label;
+  const source = enumMeta("source", tab.card.source, language).label;
+  const importance = enumMeta("importance", tab.card.importance, language).label;
+  const readingStatus = enumMeta("readingStatus", tab.card.readingStatus, language).label;
+  const status = tab.archived ? t.archived : isGhost ? t.ghostStatus : t.active;
+  const tags = Array.from(new Set([...tab.card.topics, ...tab.card.entities])).filter(Boolean).slice(0, 4);
+  const imagePreviewUrl = tab.card.contentType === "image" ? tab.card.previewImageUrl ?? (isDirectImageUrl(tab.url) ? tab.url : undefined) : undefined;
+  const imagePreviewUnavailable = language === "zh" ? "暂无可用图片预览" : "No image preview available";
+
+  const openTab = async () => {
+    setRestoring(true);
+    try {
+      await restoreTab(tab.id);
+      await refresh();
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const copyUrl = async () => {
+    setCopying(true);
+    try {
+      await navigator.clipboard.writeText(tab.url);
+      notify(t.copied);
+    } catch {
+      notify(t.copyFailed);
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  return (
+    <div className="min-w-0 overflow-hidden rounded-md border bg-card p-3 text-sm">
+      <div className="grid min-w-0 grid-cols-[36px_minmax(0,1fr)_auto] items-start gap-3">
+        <div className="grid h-9 w-9 place-items-center overflow-hidden rounded-md border bg-muted text-xs font-semibold uppercase text-muted-foreground">
+          {tab.favIconUrl ? <img src={tab.favIconUrl} alt="" className="h-5 w-5 object-contain favicon-image" /> : tab.domain.slice(0, 2)}
+        </div>
+        <div className="min-w-0">
+          <button
+            type="button"
+            className="block w-full min-w-0 whitespace-normal break-words text-left font-medium leading-5 text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={openTab}
+            title={tab.url}
+          >
+            {tab.title}
+          </button>
+          <p className="mt-1 break-all text-xs text-muted-foreground">{tab.domain}</p>
+        </div>
+        <div className="flex shrink-0 gap-1">
+          <AsyncButton
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title={t.reopen}
+            aria-label={t.reopen}
+            busy={restoring}
+            onClick={openTab}
+          >
+            <ArrowUpRight className="h-4 w-4" />
+          </AsyncButton>
+          <AsyncButton
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            title={t.copy}
+            aria-label={t.copy}
+            busy={copying}
+            onClick={copyUrl}
+          >
+            <Copy className="h-4 w-4" />
+          </AsyncButton>
+        </div>
+      </div>
+      <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">{tab.card.summary}</p>
+      {imagePreviewUrl && !imagePreviewFailed ? (
+        <button
+          type="button"
+          className="mt-3 block w-full overflow-hidden rounded-md border bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={openTab}
+          title={tab.title}
+        >
+          <img
+            src={imagePreviewUrl}
+            alt={tab.title}
+            className="max-h-64 w-full object-contain"
+            loading="lazy"
+            onError={() => setImagePreviewFailed(true)}
+          />
+        </button>
+      ) : tab.card.contentType === "image" ? (
+        <div className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          {imagePreviewUnavailable}
+        </div>
+      ) : null}
+      {tags.length ? (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {tags.map((tag) => <Badge key={tag} variant="secondary" className="max-w-full break-words px-1.5 py-0 text-[11px] whitespace-normal">{tag}</Badge>)}
+        </div>
+      ) : null}
+      <div className="mt-3 grid min-w-0 gap-x-3 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2">
+        <span className="min-w-0 break-words">{t.type}: <span className="font-medium text-foreground">{contentType}</span></span>
+        <span className="min-w-0 break-words">{t.status}: <span className="font-medium text-foreground">{status}</span></span>
+        <span className="min-w-0 break-words">{t.from}: <span className="font-medium text-foreground">{source}</span></span>
+        <span className="min-w-0 break-words">{t.importance}: <span className="font-medium text-foreground">{importance}</span></span>
+        <span className="min-w-0 break-words">{t.readingStatus}: <span className="font-medium text-foreground">{readingStatus}</span></span>
+        <span className="min-w-0 break-words">{t.lastActive}: <span className="font-medium text-foreground">{formatTime(tab.lastActivatedAt, Date.now(), language)}</span></span>
+        <span className="min-w-0 break-words">{t.opened}: <span className="font-medium text-foreground">{formatAbsoluteDateTime(tab.openedAt)}</span></span>
+        <span className="min-w-0 break-words">{t.activity}: <span className="font-medium text-foreground">{Math.round(tab.signals.activeMs / 60000)}m · {tab.signals.activationCount}x</span></span>
+      </div>
+      <p className="mt-2 break-all text-xs text-muted-foreground">{tab.url}</p>
+    </div>
+  );
+}
+
+function TypeLegend({ language }: { language: UiLanguage }) {
+  return (
+    <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+      {analyticsTypeOrder.map((type) => (
+        <LegendDot key={type} color={analyticsTypeColors[type]} label={enumMeta("contentType", type, language).label} />
+      ))}
+    </div>
+  );
+}
+
+function LegendDot({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </span>
+  );
+}
+
+type ChartPayloadItem = {
+  color?: string;
+  dataKey?: string | number;
+  name?: string | number;
+  value?: unknown;
+  payload?: Record<string, unknown>;
+};
+
+type AnalyticsTooltipProps = {
+  active?: boolean;
+  payload?: ChartPayloadItem[];
+};
+
+type GhostBucket = "7d" | "30d" | "90d";
+
+function chartPayloadValue(item?: ChartPayloadItem) {
+  if (!item) return 0;
+  const key = item.dataKey == null ? "" : String(item.dataKey);
+  const rawValue = key ? item.payload?.[key] ?? item.value : item.value;
+  if (Array.isArray(rawValue)) {
+    const values = rawValue.map(Number).filter(Number.isFinite);
+    if (values.length >= 2) return Math.max(0, values[values.length - 1] - values[0]);
+    return values[0] ?? 0;
+  }
+  const value = Number(rawValue);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function positiveTooltipItems(payload: ChartPayloadItem[] | undefined) {
+  return (payload ?? []).filter((entry) => chartPayloadValue(entry) > 0);
+}
+
+function ActivityChartTooltip({
+  active,
+  payload,
+  labels,
+  language,
+  hoveredType
+}: AnalyticsTooltipProps & { labels: AnalyticsLabels; language: UiLanguage; hoveredType: ContentType | null }) {
+  if (!active || !payload?.length) return null;
+  const items = positiveTooltipItems(payload).sort((left, right) => analyticsTypeOrder.indexOf(String(left.dataKey ?? "") as ContentType) - analyticsTypeOrder.indexOf(String(right.dataKey ?? "") as ContentType));
+  if (!items.length) return null;
+  const row = items[0]?.payload ?? {};
+  return (
+    <ChartTooltipBox>
+      <div className="font-medium">{String(row.label ?? "")}</div>
+      <div className="text-muted-foreground">{labels.addedLinks}: {String(row.total ?? 0)}</div>
+      <div className="mt-2 grid gap-1">
+        {items.map((item) => {
+          const type = String(item.dataKey ?? "") as ContentType;
+          const label = analyticsTypeOrder.includes(type) ? enumMeta("contentType", type, language).label : String(item.name ?? item.dataKey ?? "");
+          return (
+            <ChartTooltipRow
+              key={String(item.dataKey ?? label)}
+              color={analyticsTypeColors[type] ?? item.color}
+              label={label}
+              value={String(chartPayloadValue(item))}
+              active={hoveredType === type}
+            />
+          );
+        })}
+      </div>
+    </ChartTooltipBox>
+  );
+}
+
+function ShareChartTooltip({
+  active,
+  payload,
+  language,
+  hoveredType
+}: AnalyticsTooltipProps & { language: UiLanguage; hoveredType: ContentType | null }) {
+  if (!active || !payload?.length) return null;
+  const items = positiveTooltipItems(payload).sort((left, right) => analyticsTypeOrder.indexOf(String(left.dataKey ?? "") as ContentType) - analyticsTypeOrder.indexOf(String(right.dataKey ?? "") as ContentType));
+  if (!items.length) return null;
+  return (
+    <ChartTooltipBox>
+      <div className="grid gap-1">
+        {items.map((item) => {
+          const type = String(item.dataKey ?? "") as ContentType;
+          const label = analyticsTypeOrder.includes(type) ? enumMeta("contentType", type, language).label : String(item.name ?? item.dataKey ?? "");
+          return (
+            <ChartTooltipRow
+              key={String(item.dataKey ?? label)}
+              color={analyticsTypeColors[type] ?? item.color}
+              label={label}
+              value={`${chartPayloadValue(item).toFixed(1)}%`}
+              active={hoveredType === type}
+            />
+          );
+        })}
+      </div>
+    </ChartTooltipBox>
+  );
+}
+
+function GhostChartTooltip({
+  active,
+  payload,
+  labels,
+  hoveredBucket
+}: AnalyticsTooltipProps & { labels: AnalyticsLabels; hoveredBucket: GhostBucket | null }) {
+  if (!active || !payload?.length) return null;
+  const items = positiveTooltipItems(payload);
+  if (!items.length) return null;
+  const row = items[0]?.payload ?? {};
+  const hoveredLabel = hoveredBucket ? ghostBucketLabel(hoveredBucket, labels) : undefined;
+  return (
+    <ChartTooltipBox>
+      <div className="font-medium">{String(row.label ?? "")}</div>
+      <div className="mt-2 grid gap-1">
+        {items.map((item) => {
+          const label = String(item.dataKey ?? "");
+          return (
+            <ChartTooltipRow
+              key={label}
+              color={item.color}
+              label={label}
+              value={String(chartPayloadValue(item))}
+              active={hoveredLabel === label}
+            />
+          );
+        })}
+      </div>
+    </ChartTooltipBox>
+  );
+}
+
+function ChartTooltipRow({ color, label, value, active }: { color?: string; label: string; value: string; active?: boolean }) {
+  return (
+    <div className={cn("flex items-center justify-between gap-4 rounded px-2 py-1 text-foreground", active ? "bg-muted/70 font-semibold" : "font-medium")}>
+      <span className="flex min-w-0 items-center gap-1.5 truncate">
+        <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: color }} />
+        <span className="truncate">{label}</span>
+      </span>
+      <span className="shrink-0 tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+function handleGhostBarClick(
+  entry: { payload?: Record<string, unknown> } | undefined,
+  weeks: AnalyticsWeek[],
+  dataKey: string,
+  bucket: GhostBucket,
+  onDrilldown: (week: AnalyticsWeek, bucket: GhostBucket) => void
+) {
+  const week = weeks.find((item) => item.key === String(entry?.payload?.weekKey));
+  if (week && Number(entry?.payload?.[dataKey] ?? 0) > 0) onDrilldown(week, bucket);
+}
+
+function getGhostBucket(tab: TabMemory, now = Date.now()): GhostBucket | undefined {
+  if (now - tab.lastActivatedAt < 7 * 24 * 60 * 60 * 1000) return undefined;
+  const inactiveDays = Math.floor((now - tab.lastActivatedAt) / (24 * 60 * 60 * 1000));
+  if (inactiveDays >= 90) return "90d";
+  if (inactiveDays >= 30) return "30d";
+  return "7d";
+}
+
+function ghostBucketLabel(bucket: GhostBucket, labels: AnalyticsLabels) {
+  if (bucket === "90d") return labels.inactive90;
+  if (bucket === "30d") return labels.inactive30;
+  return labels.inactive7;
+}
+
+function ghostBucketColor(bucket: GhostBucket) {
+  if (bucket === "90d") return "#f43f5e";
+  if (bucket === "30d") return "#f59e0b";
+  return "#94a3b8";
+}
+
+function ghostBucketFromLabel(label: string, labels: AnalyticsLabels): GhostBucket | undefined {
+  if (label === labels.inactive90) return "90d";
+  if (label === labels.inactive30) return "30d";
+  if (label === labels.inactive7) return "7d";
+  return undefined;
+}
+
+function ChartTooltipBox({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="min-w-44 rounded-md border bg-popover p-2 text-xs text-popover-foreground shadow-md">
+      {children}
+    </div>
+  );
+}
+
+type AnalyticsLabels = ReturnType<typeof getAnalyticsLabels>;
+
+function getAnalyticsLabels(language: UiLanguage) {
+  if (language === "zh") {
+    return {
+      totalLinks: "总链接",
+      weeklyNew: "本周新增",
+      weeklyVisits: "本周访问",
+      ghostLinks: "幽灵链接",
+      archivedLinks: "已归档",
+      cleanupCandidates: "清理候选",
+      localMemory: "本地记忆",
+      duplicates: "{count} 个重复链接",
+      topActivity: "链接活动趋势",
+      topActivityDescription: "最近 12 周新增链接趋势，按链接类型堆叠。",
+      addedLinks: "新增链接",
+      linkShare: "链接类型占比",
+      linkShareDescription: "{type} 当前占比最高，占 {percent}。",
+      ghostTrend: "幽灵链接趋势",
+      ghostTrendDescription: "按最近活跃时间分层，观察哪些链接正在沉入坟场。",
+      inactive7: "7 天未访问",
+      inactive30: "30 天未访问",
+      inactive90: "90 天未访问",
+      topDomains: "访问最多域名",
+      topDomainsDescription: "按累计激活次数排序。",
+      domainLinks: "链接",
+      domainVisits: "访问次数",
+      ghostDomains: "幽灵最多域名",
+      ghostDomainsDescription: "最容易沉睡的来源。",
+      noData: "暂无数据"
+    };
+  }
+  return {
+    totalLinks: "Total links",
+    weeklyNew: "New this week",
+    weeklyVisits: "Visits this week",
+    ghostLinks: "Ghost links",
+    archivedLinks: "Archived",
+    cleanupCandidates: "Cleanup candidates",
+    localMemory: "Local memory",
+    duplicates: "{count} duplicates",
+    topActivity: "Link Activity",
+    topActivityDescription: "New links over the last 12 weeks, stacked by link type.",
+    addedLinks: "Added links",
+    linkShare: "Link Type Share",
+    linkShareDescription: "{type} is the largest current share at {percent}.",
+    ghostTrend: "Ghost Link Trend",
+    ghostTrendDescription: "Inactive link cohorts by last active week.",
+    inactive7: "7d inactive",
+    inactive30: "30d inactive",
+    inactive90: "90d inactive",
+    topDomains: "Top domains",
+    topDomainsDescription: "Ranked by total activation count.",
+    domainLinks: "Links",
+    domainVisits: "Visits",
+    ghostDomains: "Ghost domains",
+    ghostDomainsDescription: "Sources most likely to go stale.",
+    noData: "No data"
+  };
+}
+
+function buildAnalytics(snapshot: AppSnapshot) {
+  const now = Date.now();
+  const currentWeekStart = startOfWeekTimestamp(now);
+  const previousWeekStart = currentWeekStart - 7 * 24 * 60 * 60 * 1000;
+  const weeks = Array.from({ length: 12 }, (_, index) => {
+    const start = currentWeekStart - (11 - index) * 7 * 24 * 60 * 60 * 1000;
+    const end = start + 7 * 24 * 60 * 60 * 1000;
+    return createAnalyticsWeek(start, end);
+  });
+  const weekByStart = new Map(weeks.map((week) => [week.start, week]));
+  const ghostIds = new Set(snapshot.ghostTabs.map((tab) => tab.id));
+  const urlCounts = new Map<string, number>();
+  const typeTotals = createTypeCounts();
+  const visitDomainScores = new Map<string, number>();
+  const ghostDomainScores = new Map<string, number>();
+
+  for (const tab of snapshot.tabs) {
+    const normalizedUrl = normalizeAnalyticsUrl(tab.url);
+    urlCounts.set(normalizedUrl, (urlCounts.get(normalizedUrl) ?? 0) + 1);
+    typeTotals[tab.card.contentType] += 1;
+    visitDomainScores.set(tab.domain, (visitDomainScores.get(tab.domain) ?? 0) + Math.max(1, tab.signals.activationCount));
+    if (ghostIds.has(tab.id)) ghostDomainScores.set(tab.domain, (ghostDomainScores.get(tab.domain) ?? 0) + 1);
+
+    const openedWeek = weekByStart.get(startOfWeekTimestamp(tab.openedAt));
+    if (openedWeek) {
+      openedWeek.typeCounts[tab.card.contentType] += 1;
+      openedWeek.total += 1;
+    }
+
+    const lastActiveWeek = weekByStart.get(startOfWeekTimestamp(tab.lastActivatedAt));
+    if (lastActiveWeek && now - tab.lastActivatedAt >= 7 * 24 * 60 * 60 * 1000) {
+      const inactiveDays = Math.floor((now - tab.lastActivatedAt) / (24 * 60 * 60 * 1000));
+      if (inactiveDays >= 90) lastActiveWeek.ghost90 += 1;
+      else if (inactiveDays >= 30) lastActiveWeek.ghost30 += 1;
+      else lastActiveWeek.ghost7 += 1;
+    }
+  }
+
+  const duplicateLinks = Array.from(urlCounts.values()).reduce((sum, count) => sum + Math.max(0, count - 1), 0);
+  const weeklyNew = snapshot.tabs.filter((tab) => tab.openedAt >= currentWeekStart).length;
+  const previousWeeklyNew = snapshot.tabs.filter((tab) => tab.openedAt >= previousWeekStart && tab.openedAt < currentWeekStart).length;
+  const weeklyVisits = snapshot.tabs.filter((tab) => tab.lastActivatedAt >= currentWeekStart).length;
+  const previousWeeklyVisits = snapshot.tabs.filter((tab) => tab.lastActivatedAt >= previousWeekStart && tab.lastActivatedAt < currentWeekStart).length;
+  const typeShare = analyticsTypeOrder
+    .map((type) => ({
+      label: type,
+      value: typeTotals[type],
+      percent: typeTotals[type] / Math.max(snapshot.totalTabs, 1) * 100
+    }))
+    .filter((item) => item.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  return {
+    weeks,
+    weeklyNew,
+    previousWeeklyNew,
+    weeklyVisits,
+    previousWeeklyVisits,
+    duplicateLinks,
+    cleanupCandidates: snapshot.ghostTabs.length + duplicateLinks,
+    typeShare,
+    topVisitDomains: rankMap(visitDomainScores, 5),
+    topGhostDomains: rankMap(ghostDomainScores, 5)
+  };
+}
+
+function createAnalyticsWeek(start: number, end: number): AnalyticsWeek {
+  const date = new Date(start);
+  const label = `${formatDate(date)} - ${formatDate(new Date(end - 1))}`;
+  return {
+    key: String(start),
+    label,
+    shortLabel: `${date.getMonth() + 1}/${date.getDate()}`,
+    start,
+    end,
+    total: 0,
+    typeCounts: createTypeCounts(),
+    ghost7: 0,
+    ghost30: 0,
+    ghost90: 0
+  };
+}
+
+function createTypeCounts(): Record<ContentType, number> {
+  return {
+    article: 0,
+    video: 0,
+    pdf: 0,
+    tweet: 0,
+    repo: 0,
+    doc: 0,
+    image: 0,
+    saas: 0
+  };
+}
+
+function startOfWeekTimestamp(timestamp: number) {
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  const day = date.getDay();
+  const mondayOffset = day === 0 ? -6 : 1 - day;
+  date.setDate(date.getDate() + mondayOffset);
+  return date.getTime();
+}
+
+function normalizeAnalyticsUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = "";
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return url.trim();
+  }
+}
+
+function isDirectImageUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return /\.(png|jpe?g|webp|gif|avif|bmp|svg)$/i.test(parsed.pathname);
+  } catch {
+    return /\.(png|jpe?g|webp|gif|avif|bmp|svg)(\?|#|$)/i.test(url);
+  }
+}
+
+function rankMap(map: Map<string, number>, limit: number): RankItem[] {
+  const total = Array.from(map.values()).reduce((sum, value) => sum + value, 0);
+  return Array.from(map.entries())
+    .map(([label, value]) => ({ label, value, percent: value / Math.max(total, 1) * 100 }))
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
+    .slice(0, limit);
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat().format(value);
+}
+
+function formatPercent(value: number, total: number, language: UiLanguage) {
+  const percent = value / Math.max(total, 1) * 100;
+  return language === "zh" ? `占比 ${percent.toFixed(1)}%` : `${percent.toFixed(1)}% share`;
+}
+
+function formatDelta(value: number, previous: number, language: UiLanguage) {
+  const delta = value - previous;
+  if (delta === 0) return language === "zh" ? "与上周持平" : "Flat vs last week";
+  const prefix = delta > 0 ? "+" : "";
+  return language === "zh" ? `较上周 ${prefix}${delta}` : `${prefix}${delta} vs last week`;
 }
 
 function TabCount({ value }: { value: number }) {
@@ -1868,6 +2827,9 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
     ? t.privacyAiOutboundValue
     : t.privacyAiDisabled;
   const deepSeekRequestUrl = toChatCompletionsUrl(snapshot.settings.deepSeek.baseUrl);
+  const aiProviderLabel = canUseAiFeatures(snapshot.settings)
+    ? snapshot.settings.deepSeek.enabled ? t.providerDeepSeek : t.providerChromeLocal
+    : t.disabled;
   const settingsSections = [
     { value: "general", title: t.settingsGeneralTab, description: t.settingsGeneralHint, icon: <SlidersHorizontal className="h-4 w-4" /> },
     { value: "archive", title: t.settingsArchiveTab, description: t.settingsArchiveHint, icon: <Archive className="h-4 w-4" /> },
@@ -2077,6 +3039,15 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
           </TabsContent>
 
           <TabsContent value="ai" className="mt-0 grid items-start gap-5">
+            <TrustStatusSummary
+              title={t.settingsSectionStatus}
+              items={[
+                { label: t.aiStatus, value: canUseAiFeatures(snapshot.settings) ? t.enabled : t.disabled },
+                { label: t.provider, value: aiProviderLabel },
+                { label: t.deepSeekModel, value: snapshot.settings.deepSeek.model || t.notYet },
+                { label: t.lastAiCall, value: formatLastAiCall(snapshot, language, t) }
+              ]}
+            />
             <SettingsPanel title={t.deepSeekProvider} description={t.deepSeekDescription}>
               <ToggleRow
                 label={t.aiEnabled}
@@ -2270,18 +3241,26 @@ function PrivacyFact({ label, value }: { label: string; value: string }) {
 }
 
 function TrustStatusSummary({ title, items }: { title: string; items: Array<{ label: string; value: string }> }) {
+  const statusTone = (value: string) => {
+    const normalized = value.toLowerCase();
+    if (["active", "enabled", "运行中", "已启用"].includes(normalized)) return "bg-emerald-500";
+    if (["paused", "disabled", "已暂停", "已关闭"].includes(normalized)) return "bg-muted-foreground/50";
+    return undefined;
+  };
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-0">
-        {items.map((item) => (
-          <div key={item.label} className="grid min-w-0 gap-1 border-t py-3 first:border-t-0 sm:grid-cols-[160px_minmax(0,1fr)] sm:gap-4">
-            <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
-            <p className="min-w-0 whitespace-normal break-words text-sm font-semibold leading-6 text-foreground" title={item.value}>{item.value}</p>
-          </div>
-        ))}
+    <Card className="shadow-none">
+      <CardContent className="flex flex-wrap items-center gap-x-4 gap-y-2 p-3">
+        <span className="shrink-0 text-xs font-semibold uppercase tracking-normal text-muted-foreground">{title}</span>
+        {items.map((item) => {
+          const tone = statusTone(item.value);
+          return (
+            <div key={item.label} className="flex min-w-0 items-center gap-1.5 rounded-md border bg-muted/20 px-2 py-1 text-xs">
+              {tone ? <span className={cn("h-2 w-2 shrink-0 rounded-full", tone)} aria-hidden="true" /> : null}
+              <span className="shrink-0 text-muted-foreground">{item.label}</span>
+              <span className="min-w-0 truncate font-medium text-foreground" title={item.value}>{item.value}</span>
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );

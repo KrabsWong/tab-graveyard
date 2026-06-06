@@ -20,6 +20,7 @@ export type TabInfoCard = {
   possibleQueries: string[];
   bilingualTopics: string[];
   fingerprint: string;
+  previewImageUrl?: string;
   taskContext?: string;
   customTags?: string[];
   userEdited?: boolean;
@@ -242,6 +243,7 @@ export type ExtensionRequest =
   | { type: "cancelArchivePreview" }
   | { type: "confirmArchivePreview"; previewId: string }
   | { type: "contentSignal"; tabId?: number; url: string; signal: Partial<BehaviorSignals> }
+  | { type: "pageMetadata"; tabId?: number; url: string; metadata: { previewImageUrl?: string } }
   | { type: "resurfaceAction"; tabIds: string[]; action: "shown" | "dismissed" | "opened" }
   | { type: "copyUrlTrigger"; url: string }
   | { type: "recall"; query: string; filters?: RecallFilters }

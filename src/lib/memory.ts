@@ -264,6 +264,7 @@ export function createInfoCard(title: string, url: string, existing?: TabInfoCar
     possibleQueries: existing?.possibleQueries?.length ? existing.possibleQueries : words,
     bilingualTopics: existing?.bilingualTopics?.length ? existing.bilingualTopics : topics.flatMap((topic) => [topic, translateTopic(topic)]),
     fingerprint: normalizeFingerprint(url),
+    previewImageUrl: existing?.previewImageUrl,
     taskContext: existing?.taskContext ?? "",
     customTags: existing?.customTags ?? [],
     userEdited: existing?.userEdited,

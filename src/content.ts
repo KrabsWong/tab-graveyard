@@ -100,6 +100,9 @@ if (!tabGraveyardWindow.__tabGraveyardContentLoaded) {
       .then((context) => toggleCommandPalette(context.language, context.theme, Boolean(context.aiAvailable)))
       .catch(() => toggleCommandPalette("en", "system", false));
   }, true);
+
+  sendPageMetadata();
+  window.setTimeout(sendPageMetadata, 1500);
 }
 
 function isCommandPaletteShortcut(event: KeyboardEvent) {
@@ -581,6 +584,52 @@ function getFaviconFallback(domain: string) {
 
 function sendContentSignal(signal: { activeMs?: number; maxScrollPercent?: number; copiedTextCount?: number; referrerUrl?: string }) {
   return sendRuntimeMessage({ type: "contentSignal", url: location.href, signal });
+}
+
+function sendPageMetadata() {
+  const previewImageUrl = getPagePreviewImageUrl();
+  if (!previewImageUrl) return false;
+  return sendRuntimeMessage({ type: "pageMetadata", url: location.href, metadata: { previewImageUrl } });
+}
+
+function getPagePreviewImageUrl() {
+  if (isDirectImageUrl(location.href)) return location.href;
+  const candidates = [
+    getMetaContent("meta[property='og:image']"),
+    getMetaContent("meta[property='og:image:url']"),
+    getMetaContent("meta[name='twitter:image']"),
+    getMetaContent("meta[name='twitter:image:src']"),
+    document.querySelector<HTMLLinkElement>("link[rel='image_src']")?.href,
+    document.querySelector<HTMLImageElement>("main img[src], article img[src], img[src]")?.src
+  ];
+  for (const candidate of candidates) {
+    const url = toHttpUrl(candidate);
+    if (url) return url;
+  }
+  return undefined;
+}
+
+function getMetaContent(selector: string) {
+  return document.querySelector<HTMLMetaElement>(selector)?.content;
+}
+
+function toHttpUrl(value?: string | null) {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value, location.href);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isDirectImageUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return /\.(png|jpe?g|webp|gif|avif|bmp|svg)$/i.test(parsed.pathname);
+  } catch {
+    return /\.(png|jpe?g|webp|gif|avif|bmp|svg)(\?|#|$)/i.test(url);
+  }
 }
 
 function sendRuntimeMessage(message: Record<string, unknown>) {

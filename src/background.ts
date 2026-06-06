@@ -183,6 +183,8 @@ async function handleMessage(request: ExtensionRequest) {
       return mergeSessions(request.sessionIds, request.name);
     case "contentSignal":
       return recordContentSignal(request.tabId, request.url, request.signal);
+    case "pageMetadata":
+      return recordPageMetadata(request.tabId, request.url, request.metadata);
     case "resurfaceAction":
       return recordResurfaceAction(request.tabIds, request.action);
     case "copyUrlTrigger":
@@ -759,6 +761,34 @@ async function recordContentSignal(tabId: number | undefined, url: string, signa
   );
   await setState(next);
   return createSnapshot(next);
+}
+
+async function recordPageMetadata(tabId: number | undefined, url: string, metadata: { previewImageUrl?: string }) {
+  const previewImageUrl = normalizePreviewImageUrl(metadata.previewImageUrl);
+  if (!previewImageUrl) return createSnapshot(await getState());
+  const state = await getState();
+  const domain = getDomain(url);
+  if (isBlacklisted(domain, state.settings.blacklistDomains)) return createSnapshot(state);
+  const next = ensureSessions({
+    ...state,
+    tabs: state.tabs.map((tab) => {
+      if (!((tabId && tab.tabId === tabId) || (!tab.archived && tab.url === url))) return tab;
+      if (tab.card.previewImageUrl === previewImageUrl) return tab;
+      return { ...tab, card: { ...tab.card, previewImageUrl } };
+    })
+  });
+  await setState(next);
+  return createSnapshot(next);
+}
+
+function normalizePreviewImageUrl(value?: string) {
+  if (!value) return undefined;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function recordResurfaceAction(tabIds: string[], action: "shown" | "dismissed" | "opened") {
