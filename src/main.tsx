@@ -86,6 +86,7 @@ const messages = {
     aiRecallFallback: "AI Recall fell back to local search",
     aiRecallOn: "AI Recall on",
     localRecall: "Local Recall",
+    providerChromeLocal: "Chrome local model",
     providerDeepSeek: "DeepSeek",
     intentRerank: "Intent rerank",
     tabSummaries: "Tab summaries",
@@ -189,7 +190,7 @@ const messages = {
     privacyNeverCaptured: "Never captured",
     privacyNeverCapturedValue: "Passwords, private form values, full page archives",
     privacyAiOutbound: "AI outbound",
-    privacyAiOutboundValue: "Title, URL, domain, local card metadata",
+    privacyAiOutboundValue: "On endpoint fallback only: title, URL, domain, and local card metadata.",
     privacyAiDisabled: "Disabled",
     privacyRules: "Local corrections",
     privacyRulesValue: "{count} edited cards · local storage only",
@@ -238,20 +239,23 @@ const messages = {
     themeDescription: "Use system appearance, light mode, or dark mode.",
     light: "Light",
     dark: "Dark",
-    aiMode: "AI mode",
-    aiModeDescription: "Controls whether configured AI providers may help with recall, summaries, and naming.",
-    deepSeekProvider: "DeepSeek API",
-    deepSeekDescription: "Configure an OpenAI-compatible DeepSeek endpoint. The key is stored locally and only used when AI enhancement is enabled or you test the connection.",
-    deepSeekEnabled: "Enable DeepSeek",
-    deepSeekEnabledDescription: "Allow Tab Graveyard to use DeepSeek for future AI-enhanced summaries and recall.",
+    aiMode: "AI",
+    aiModeDescription: "Enable AI-assisted recall, summaries, and naming.",
+    aiEnabled: "Enable AI",
+    aiEnabledDescription: "When enabled, Tab Graveyard tries Chrome's local model first, then falls back to the configured endpoint when available.",
+    browserAiProvider: "Chrome local model",
+    deepSeekProvider: "DeepSeek / OpenAI-compatible endpoint",
+    deepSeekDescription: "Configure DeepSeek, LM Studio, or another OpenAI-compatible chat completions endpoint. The key is stored locally and only sent to the configured endpoint.",
     deepSeekApiKey: "API Key",
-    deepSeekApiKeyDescription: "Stored in local browser storage. It is not uploaded anywhere except to your configured DeepSeek endpoint.",
+    deepSeekApiKeyDescription: "Stored in local browser storage. For local services such as LM Studio, use any placeholder if the server does not require a key.",
     showApiKey: "Show API key",
     hideApiKey: "Hide API key",
     deepSeekModel: "Model",
-    deepSeekModelDescription: "DeepSeek model name used for connection tests, memory enhancement, query expansion, and session naming.",
+    deepSeekModelDescription: "Model name used for fallback requests, connection tests, memory enhancement, query expansion, and session naming.",
     deepSeekBaseUrl: "Base URL",
-    deepSeekBaseUrlDescription: "OpenAI-compatible endpoint base URL. Keep the default unless you use a proxy or compatible gateway.",
+    deepSeekBaseUrlDescription: "OpenAI-compatible base URL. Examples: https://api.deepseek.com or http://127.0.0.1:1234/v1.",
+    deepSeekRequestUrl: "Request URL",
+    deepSeekRequestUrlDescription: "Actual request URL:",
     deepSeekTest: "Test connection",
     deepSeekTesting: "Testing...",
     deepSeekTestOk: "DeepSeek connected",
@@ -364,6 +368,7 @@ const messages = {
     aiRecallFallback: "AI 找回已回退到本地搜索",
     aiRecallOn: "AI 找回开启",
     localRecall: "本地找回",
+    providerChromeLocal: "Chrome 本地模型",
     providerDeepSeek: "DeepSeek",
     intentRerank: "意图重排",
     tabSummaries: "标签总结",
@@ -467,7 +472,7 @@ const messages = {
     privacyNeverCaptured: "不会记录",
     privacyNeverCapturedValue: "密码、私密表单内容、完整网页归档",
     privacyAiOutbound: "AI 外发",
-    privacyAiOutboundValue: "标题、URL、域名、本地信息卡元数据",
+    privacyAiOutboundValue: "仅 endpoint 回退时发送：标题、URL、域名、本地信息卡元数据。",
     privacyAiDisabled: "已关闭",
     privacyRules: "本地修正",
     privacyRulesValue: "{count} 张已编辑信息卡 · 仅本地存储",
@@ -516,20 +521,23 @@ const messages = {
     themeDescription: "跟随系统，或手动切换明亮/黑夜模式。",
     light: "明亮",
     dark: "黑夜",
-    aiMode: "AI 模式",
-    aiModeDescription: "控制已配置的 AI 是否可以参与找回、摘要增强和会话命名。",
-    deepSeekProvider: "DeepSeek API",
-    deepSeekDescription: "配置兼容 OpenAI 格式的 DeepSeek 接口。API Key 保存在本地，只会在启用 AI 增强或手动测试连接时使用。",
-    deepSeekEnabled: "启用 DeepSeek",
-    deepSeekEnabledDescription: "允许 Tab Graveyard 后续用 DeepSeek 做 AI 摘要和增强找回。",
+    aiMode: "AI",
+    aiModeDescription: "启用 AI 找回、摘要增强和会话命名。",
+    aiEnabled: "启用 AI",
+    aiEnabledDescription: "开启后会优先尝试 Chrome 本地模型；不可用时，再自动回退到已配置的 endpoint。",
+    browserAiProvider: "Chrome 本地模型",
+    deepSeekProvider: "DeepSeek / OpenAI-compatible endpoint",
+    deepSeekDescription: "配置 DeepSeek、LM Studio 或其他兼容 OpenAI Chat Completions 格式的接口。API Key 保存在本地，只发送到你配置的 endpoint。",
     deepSeekApiKey: "API Key",
-    deepSeekApiKeyDescription: "保存在浏览器本地存储中。除你配置的 DeepSeek 接口外，不会上传到其他地方。",
+    deepSeekApiKeyDescription: "保存在浏览器本地存储中。LM Studio 等本地服务如果不需要 key，可以填任意占位值。",
     showApiKey: "显示 API Key",
     hideApiKey: "隐藏 API Key",
     deepSeekModel: "模型",
-    deepSeekModelDescription: "用于连接测试、记忆增强、查询扩展和会话命名的 DeepSeek 模型名。",
+    deepSeekModelDescription: "用于回退请求、连接测试、记忆增强、查询扩展和会话命名的模型名。",
     deepSeekBaseUrl: "Base URL",
-    deepSeekBaseUrlDescription: "兼容 OpenAI 格式的接口地址。除非使用代理或兼容网关，否则保持默认即可。",
+    deepSeekBaseUrlDescription: "兼容 OpenAI 格式的接口地址。例如：https://api.deepseek.com 或 http://127.0.0.1:1234/v1。",
+    deepSeekRequestUrl: "请求 URL",
+    deepSeekRequestUrlDescription: "实际请求地址：",
     deepSeekTest: "测试连接",
     deepSeekTesting: "测试中...",
     deepSeekTestOk: "DeepSeek 已连接",
@@ -708,7 +716,12 @@ function interpolate(template: string, values: Record<string, string | number>) 
 }
 
 function canUseAiFeatures(settings: SettingsType) {
-  return settings.deepSeek.enabled && settings.aiMode !== "local-only" && !settings.strictPrivacy && Boolean(settings.deepSeek.apiKey.trim());
+  return settings.aiMode !== "local-only";
+}
+
+function toChatCompletionsUrl(baseUrl: string) {
+  const normalized = (baseUrl || "https://api.deepseek.com").trim().replace(/\/+$/, "");
+  return normalized.endsWith("/chat/completions") ? normalized : `${normalized}/chat/completions`;
 }
 
 type EnumKind = "source" | "contentType" | "importance" | "readingStatus" | "aiMode" | "archiveTrust" | "time" | "theme";
@@ -1851,6 +1864,10 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
   const resurfaceFrequencyLabel = snapshot.settings.resurfaceRule.maxPerDay === 0 ? t.resurfaceFrequencyAlways : String(snapshot.settings.resurfaceRule.maxPerDay);
   const cooldownHours = snapshot.settings.resurfaceRule.cooldownHours;
   const resurfaceCooldownLabel = cooldownHours === 0 ? t.resurfaceCooldownNone : cooldownHours < 1 ? `${Math.round(cooldownHours * 60)}m` : `${cooldownHours}h`;
+  const aiOutboundLabel = snapshot.settings.deepSeek.enabled && !snapshot.settings.strictPrivacy
+    ? t.privacyAiOutboundValue
+    : t.privacyAiDisabled;
+  const deepSeekRequestUrl = toChatCompletionsUrl(snapshot.settings.deepSeek.baseUrl);
   const settingsSections = [
     { value: "general", title: t.settingsGeneralTab, description: t.settingsGeneralHint, icon: <SlidersHorizontal className="h-4 w-4" /> },
     { value: "archive", title: t.settingsArchiveTab, description: t.settingsArchiveHint, icon: <Archive className="h-4 w-4" /> },
@@ -2053,37 +2070,21 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
               <CardContent className="grid gap-2 text-sm text-muted-foreground md:grid-cols-2">
                 <PrivacyFact label={t.privacyLocalFields} value={t.privacyLocalFieldsValue} />
                 <PrivacyFact label={t.privacyNeverCaptured} value={t.privacyNeverCapturedValue} />
-                <PrivacyFact label={t.privacyAiOutbound} value={snapshot.settings.deepSeek.enabled && !snapshot.settings.strictPrivacy ? t.privacyAiOutboundValue : t.privacyAiDisabled} />
+                <PrivacyFact label={t.privacyAiOutbound} value={aiOutboundLabel} />
                 <PrivacyFact label={t.privacyRules} value={interpolate(t.privacyRulesValue, { count: snapshot.tabs.filter((tab) => tab.card.userEdited).length })} />
               </CardContent>
             </Card>
           </TabsContent>
 
           <TabsContent value="ai" className="mt-0 grid items-start gap-5">
-            <TrustStatusSummary
-              title={t.trustSummary}
-              items={[
-                { label: t.aiStatus, value: canUseAiFeatures(snapshot.settings) ? t.enabled : t.disabled },
-                { label: t.provider, value: snapshot.settings.deepSeek.enabled ? t.providerDeepSeek : t.notYet },
-                { label: t.lastAiCall, value: formatLastAiCall(snapshot, language, t) },
-                { label: t.outboundData, value: snapshot.settings.deepSeek.enabled && !snapshot.settings.strictPrivacy ? t.privacyAiOutboundValue : t.privacyAiDisabled }
-              ]}
-            />
             <SettingsPanel title={t.deepSeekProvider} description={t.deepSeekDescription}>
-              <SelectRow
-                label={t.aiMode}
-                value={snapshot.settings.aiMode}
-                options={enumOptions("aiMode", ["smart", "local-first", "local-only"], language)}
-                description={t.aiModeDescription}
-                showOptionDescription
-                onChange={(aiMode) => update({ aiMode: aiMode as SettingsType["aiMode"], strictPrivacy: aiMode === "local-only" })}
-              />
               <ToggleRow
-                label={t.deepSeekEnabled}
-                description={t.deepSeekEnabledDescription}
-                checked={snapshot.settings.deepSeek.enabled}
-                onChange={(enabled) => updateDeepSeek({ enabled })}
+                label={t.aiEnabled}
+                description={t.aiModeDescription}
+                checked={snapshot.settings.aiMode !== "local-only"}
+                onChange={(enabled) => update({ aiMode: enabled ? "local-first" : "local-only" })}
               />
+              <p className="text-xs leading-5 text-muted-foreground">{t.aiEnabledDescription}</p>
               <TextRow
                 label={t.deepSeekApiKey}
                 description={t.deepSeekApiKeyDescription}
@@ -2096,16 +2097,19 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
                 label={t.deepSeekModel}
                 description={t.deepSeekModelDescription}
                 value={snapshot.settings.deepSeek.model}
-                placeholder="deepseek-chat"
+                placeholder="deepseek-v4-flash"
                 onChange={(model) => updateDeepSeek({ model })}
               />
-              <TextRow
-                label={t.deepSeekBaseUrl}
-                description={t.deepSeekBaseUrlDescription}
-                value={snapshot.settings.deepSeek.baseUrl}
-                placeholder="https://api.deepseek.com"
-                onChange={(baseUrl) => updateDeepSeek({ baseUrl })}
-              />
+              <div className="grid gap-2">
+                <TextRow
+                  label={t.deepSeekBaseUrl}
+                  description={t.deepSeekBaseUrlDescription}
+                  value={snapshot.settings.deepSeek.baseUrl}
+                  placeholder="https://api.deepseek.com"
+                  onChange={(baseUrl) => updateDeepSeek({ baseUrl })}
+                />
+                <p className="break-all text-xs leading-5 text-muted-foreground">{t.deepSeekRequestUrlDescription} <code className="rounded bg-muted/60 px-1.5 py-0.5">{deepSeekRequestUrl}</code></p>
+              </div>
               <div className="flex flex-wrap items-center gap-3">
                 <AsyncButton
                   className="w-fit"
@@ -2118,7 +2122,7 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
                     try {
                       const result = await testDeepSeek();
                       setDeepSeekStatusKind("success");
-                      setDeepSeekStatus(`${t.deepSeekTestOk}: ${result.model}${result.content ? ` · ${result.content}` : ""}`);
+                      setDeepSeekStatus(`${t.deepSeekTestOk}: ${result.model} · ${result.requestUrl}${result.content ? ` · ${result.content}` : ""}`);
                     } catch (error) {
                       setDeepSeekStatusKind("error");
                       setDeepSeekStatus(error instanceof Error ? error.message : String(error));
@@ -2271,11 +2275,11 @@ function TrustStatusSummary({ title, items }: { title: string; items: Array<{ la
       <CardHeader className="pb-3">
         <CardTitle>{title}</CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-3 md:grid-cols-4">
+      <CardContent className="grid gap-0">
         {items.map((item) => (
-          <div key={item.label} className="rounded-md border bg-muted/20 p-3">
-            <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">{item.label}</p>
-            <p className="mt-1 truncate text-sm font-semibold" title={item.value}>{item.value}</p>
+          <div key={item.label} className="grid min-w-0 gap-1 border-t py-3 first:border-t-0 sm:grid-cols-[160px_minmax(0,1fr)] sm:gap-4">
+            <p className="text-sm font-medium text-muted-foreground">{item.label}</p>
+            <p className="min-w-0 whitespace-normal break-words text-sm font-semibold leading-6 text-foreground" title={item.value}>{item.value}</p>
           </div>
         ))}
       </CardContent>

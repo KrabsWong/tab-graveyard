@@ -97,7 +97,7 @@ export function importHistory() {
 }
 
 export function testDeepSeek() {
-  return sendMessage<{ model: string; content: string }>({ type: "testDeepSeek" });
+  return sendMessage<{ model: string; content: string; requestUrl: string }>({ type: "testDeepSeek" });
 }
 
 export function enhanceWithDeepSeek() {

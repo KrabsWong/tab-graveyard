@@ -125,7 +125,7 @@ async function toggleCommandPalette() {
     type: "TAB_GRAVEYARD_TOGGLE_COMMAND_PALETTE",
     language: resolveUiLanguage(state.settings.language),
     theme: state.settings.theme,
-    aiAvailable: canUseDeepSeek(state)
+    aiAvailable: canUseAiProvider(state)
   };
   try {
     await chrome.tabs.sendMessage(tab.id, message);
@@ -193,7 +193,7 @@ async function handleMessage(request: ExtensionRequest) {
       return quickRecall(request.query);
     case "commandPaletteContext": {
       const state = await getState();
-      return { language: resolveUiLanguage(state.settings.language), theme: state.settings.theme, aiAvailable: canUseDeepSeek(state) };
+      return { language: resolveUiLanguage(state.settings.language), theme: state.settings.theme, aiAvailable: canUseAiProvider(state) };
     }
     case "summarizeRecall":
       return summarizeRecallWithDeepSeek(request.query, request.tabIds, request.sessionId);
@@ -344,7 +344,7 @@ async function enhanceStableTab(tabId: number, url: string) {
   if (liveTab.url !== url) return;
 
   const state = await getState();
-  if (!canUseDeepSeek(state)) return;
+  if (!canUseAiProvider(state)) return;
   if (state.settings.recordingPaused) return;
   if (isBlacklisted(getDomain(url), state.settings.blacklistDomains)) return;
 
@@ -1024,14 +1024,15 @@ async function testDeepSeek() {
   await setState(addEvent(state, "deepseek_test_success", { model: state.settings.deepSeek.model.trim() }));
   return {
     model: payload.model ?? state.settings.deepSeek.model.trim(),
-    content: payload?.choices?.[0]?.message?.content?.trim() ?? ""
+    content: payload?.choices?.[0]?.message?.content?.trim() ?? "",
+    requestUrl: toChatCompletionsUrl(state.settings.deepSeek.baseUrl)
   };
 }
 
 async function recallWithDeepSeek(query: string, filters?: RecallFilters) {
   const state = await getState();
   const tabs = getVisibleTabs(state.tabs, state.settings);
-  if (!query.trim() || !canUseDeepSeek(state)) {
+  if (!query.trim() || !canUseAiProvider(state)) {
     return recallTabs(tabs, query, filters);
   }
 
@@ -1108,7 +1109,7 @@ function quickRecallItemFromTab(tab: TabMemory, state: GraveyardState, now: numb
 
 async function summarizeRecallWithDeepSeek(query: string, tabIds?: string[], sessionId?: string): Promise<RecallSynthesisResult> {
   const state = ensureSessions(await getState());
-  if (!canUseDeepSeek(state)) throw new Error("DeepSeek is disabled by AI mode or strict privacy mode.");
+  if (!canUseAiProvider(state)) throw new Error("AI is disabled or unavailable.");
   const language = resolveUiLanguage(state.settings.language);
   const outputLanguage = language === "zh"
     ? "Simplified Chinese. All user-facing JSON string values must be Chinese. Keep product names, domains, URLs, API names, and code identifiers in their original language."
@@ -1209,8 +1210,7 @@ function buildSessionSummarySourceHash(tabs: TabMemory[]) {
 
 async function enhanceWithDeepSeek() {
   let state = await getState();
-  assertDeepSeekConfigured(state);
-  if (!canUseDeepSeek(state)) throw new Error("DeepSeek is disabled by AI mode or strict privacy mode.");
+  if (!canUseAiProvider(state)) throw new Error("AI is disabled or unavailable.");
 
   let enhancedTabs = 0;
   const tabs = [...state.tabs];
@@ -1387,11 +1387,11 @@ Return JSON: { "name": "short session name" }`,
 }
 
 async function deepSeekJson<T>(state: GraveyardState, system: string, user: string, maxTokens: number): Promise<T> {
-  const payload = await deepSeekChat(state, [
+  const messages = [
     { role: "system", content: `${system} Return one valid JSON object only. No markdown fences, comments, or trailing prose.` },
     { role: "user", content: user }
-  ], maxTokens);
-  const content = payload.choices?.[0]?.message?.content ?? "{}";
+  ] satisfies DeepSeekMessage[];
+  const content = await aiText(state, messages, maxTokens);
   return parseDeepSeekJson<T>(state, content, maxTokens);
 }
 
@@ -1410,7 +1410,7 @@ async function parseDeepSeekJson<T>(state: GraveyardState, content: string, maxT
 }
 
 async function repairDeepSeekJson(state: GraveyardState, brokenJson: string, maxTokens: number, parseError: unknown) {
-  const payload = await deepSeekChat(state, [
+  return aiText(state, [
     {
       role: "system",
       content: "Repair malformed JSON. Return exactly one valid JSON object. Do not add markdown fences or explanations."
@@ -1423,18 +1423,70 @@ Malformed JSON:
 ${brokenJson.slice(0, 4000)}`
     }
   ], Math.max(maxTokens, 500));
-  return payload.choices?.[0]?.message?.content ?? "{}";
+}
+
+async function aiText(state: GraveyardState, messages: DeepSeekMessage[], maxTokens: number) {
+  const canUseLocal = canUseBrowserAi(state);
+  const canUseRemote = canUseDeepSeek(state);
+  const errors: string[] = [];
+
+  if (canUseLocal) {
+    try {
+      return await browserAiText(messages, maxTokens);
+    } catch (error) {
+      errors.push(`Chrome local model: ${formatAiFallbackReason(error)}`);
+    }
+  }
+
+  if (canUseRemote) {
+    try {
+      const payload = await deepSeekChat(state, messages, maxTokens);
+      return payload.choices?.[0]?.message?.content ?? "{}";
+    } catch (error) {
+      errors.push(`OpenAI-compatible endpoint: ${formatAiFallbackReason(error)}`);
+    }
+  }
+
+  throw new Error(errors.length ? errors.join(" | ") : "No AI provider is available.");
+}
+
+async function browserAiText(messages: DeepSeekMessage[], maxTokens: number) {
+  const languageModel = (globalThis as unknown as {
+    LanguageModel?: {
+      availability(options?: Record<string, unknown>): Promise<string>;
+      create(options?: Record<string, unknown>): Promise<{ prompt(input: string): Promise<string>; destroy?: () => void }>;
+    };
+  }).LanguageModel;
+  if (!languageModel) throw new Error("Chrome LanguageModel API is not available.");
+  const availability = await languageModel.availability();
+  if (availability !== "available") throw new Error(`Chrome local model is ${availability}.`);
+
+  const session = await languageModel.create({
+    expectedOutputs: [{ type: "text", languages: ["en", "zh"] }],
+    monitor(monitor: EventTarget) {
+      monitor.addEventListener("downloadprogress", () => undefined);
+    }
+  });
+  try {
+    const prompt = messages
+      .map((message) => `${message.role.toUpperCase()}:\n${message.content}`)
+      .join("\n\n");
+    return await session.prompt(`${prompt}\n\nReturn a compact response under ${maxTokens} output tokens when possible.`);
+  } finally {
+    session.destroy?.();
+  }
 }
 
 async function deepSeekChat(state: GraveyardState, messages: DeepSeekMessage[], maxTokens: number) {
   const { apiKey, baseUrl, model } = state.settings.deepSeek;
   assertDeepSeekConfigured(state);
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+  if (apiKey.trim()) headers.Authorization = `Bearer ${apiKey.trim()}`;
   const response = await fetch(toChatCompletionsUrl(baseUrl), {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey.trim()}`
-    },
+    headers,
     body: JSON.stringify({
       model: model.trim(),
       messages,
@@ -1455,18 +1507,39 @@ async function deepSeekChat(state: GraveyardState, messages: DeepSeekMessage[], 
 
 function canUseDeepSeek(state: GraveyardState) {
   const settings = state.settings;
-  return settings.deepSeek.enabled && settings.aiMode !== "local-only" && !settings.strictPrivacy && Boolean(settings.deepSeek.apiKey.trim());
+  return settings.aiMode !== "local-only"
+    && !settings.strictPrivacy
+    && Boolean(settings.deepSeek.baseUrl.trim())
+    && Boolean(settings.deepSeek.model.trim())
+    && (Boolean(settings.deepSeek.apiKey.trim()) || isLocalAiEndpoint(settings.deepSeek.baseUrl));
+}
+
+function canUseBrowserAi(state: GraveyardState) {
+  const settings = state.settings;
+  return settings.aiMode !== "local-only";
+}
+
+function canUseAiProvider(state: GraveyardState) {
+  return canUseBrowserAi(state) || canUseDeepSeek(state);
 }
 
 function assertDeepSeekConfigured(state: GraveyardState) {
-  const { apiKey, model } = state.settings.deepSeek;
-  if (!apiKey.trim()) throw new Error("DeepSeek API Key is required.");
+  const { model } = state.settings.deepSeek;
   if (!model.trim()) throw new Error("DeepSeek model is required.");
 }
 
 function toChatCompletionsUrl(baseUrl: string) {
   const normalized = (baseUrl || "https://api.deepseek.com").trim().replace(/\/+$/, "");
   return normalized.endsWith("/chat/completions") ? normalized : `${normalized}/chat/completions`;
+}
+
+function isLocalAiEndpoint(baseUrl: string) {
+  try {
+    const hostname = new URL(baseUrl).hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
 }
 
 function extractJson(content: string) {

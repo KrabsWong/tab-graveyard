@@ -24,9 +24,9 @@ export const defaultSettings: Settings = {
   language: "system",
   theme: "system",
   deepSeek: {
-    enabled: false,
+    enabled: true,
     apiKey: "",
-    model: "deepseek-chat",
+    model: "deepseek-v4-flash",
     baseUrl: "https://api.deepseek.com"
   },
   strictPrivacy: true,
