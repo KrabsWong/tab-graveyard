@@ -16,7 +16,8 @@ import {
   mergeTab,
   normalizeState,
   recallTabs,
-  setState
+  setState,
+  shouldSkipUrl
 } from "@/lib/memory";
 import { CLOUD_AUTH_SERVER_URL, getCloudAuthState, revokeCloudAuthState, setCloudAuthState } from "@/lib/cloud-auth";
 import type { ContentType, ExtensionRequest, ExtensionResponse, GraveyardState, Importance, QuickRecallItem, ReadingStatus, RecallCue, RecallFilters, RecallResult, RecallSynthesisResult, SourceType, TabInfoCard, TabMemory } from "@/lib/types";
@@ -930,7 +931,7 @@ async function importHistory() {
   });
   let state = await getState();
   for (const item of historyItems) {
-    if (!item.url || isBlacklisted(getDomain(item.url), state.settings.blacklistDomains)) continue;
+    if (!item.url || shouldSkipUrl(item.url) || isBlacklisted(getDomain(item.url), state.settings.blacklistDomains)) continue;
     const title = item.title || getDomain(item.url);
     const openedAt = item.lastVisitTime ?? now;
     const memory: TabMemory = {
@@ -964,6 +965,10 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
     return;
   }
   const url = tab.url;
+  if (shouldSkipUrl(url)) {
+    logResurface("skip:transient-url", { tabId: tab.id, url });
+    return;
+  }
   const state = await getState();
   const currentDomain = getDomain(url);
   if (isBlacklisted(currentDomain, state.settings.blacklistDomains)) {

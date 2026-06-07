@@ -80,6 +80,7 @@ export function normalizeState(raw: unknown): GraveyardState {
   const base = emptyState();
   if (!raw || typeof raw !== "object") return base;
   const candidate = raw as Partial<GraveyardState>;
+  const tabs = Array.isArray(candidate.tabs) ? candidate.tabs.map(normalizeTabMemory).filter((tab) => !shouldSkipUrl(tab.url)) : [];
   const settings = {
     ...defaultSettings,
     ...(candidate.settings ?? {}),
@@ -93,7 +94,7 @@ export function normalizeState(raw: unknown): GraveyardState {
     }
   };
   return {
-    tabs: Array.isArray(candidate.tabs) ? candidate.tabs.map(normalizeTabMemory) : [],
+    tabs,
     sessions: Array.isArray(candidate.sessions) ? candidate.sessions : [],
     settings,
     lastUndo: candidate.lastUndo,
@@ -456,8 +457,10 @@ function parseCues(query: string) {
   return Array.from(new Set([...cues, ...mapped]));
 }
 
-function shouldSkipUrl(url: string) {
-  return /^(chrome|edge|brave|opera|vivaldi|arc|chrome-extension):/.test(url);
+export function shouldSkipUrl(url: string) {
+  const lower = url.toLowerCase();
+  if (/^(chrome|edge|brave|opera|vivaldi|arc|chrome-extension):/.test(lower)) return true;
+  return isTransientAuthUrl(url);
 }
 
 function inferContentType(url: string): ContentType {
@@ -465,7 +468,7 @@ function inferContentType(url: string): ContentType {
   if (lower.includes("youtube.com") || lower.includes("youtu.be") || lower.includes("vimeo.com")) return "video";
   if (lower.endsWith(".pdf") || lower.includes("/pdf")) return "pdf";
   if (lower.includes("twitter.com") || lower.includes("x.com")) return "tweet";
-  if (lower.includes("github.com") || lower.includes("gitlab.com")) return "repo";
+  if (isCodeRepositoryUrl(url)) return "repo";
   if (lower.includes("notion.so") || lower.includes("docs.google.com")) return "doc";
   if (/\.(png|jpg|jpeg|webp|gif)(\?|$)/.test(lower)) return "image";
   if (lower.includes("app.") || lower.includes(".app")) return "saas";
@@ -528,7 +531,7 @@ function groupKeys(tab: TabMemory, mode: BrowseGroupMode, language: "en" | "zh")
 
 function inferImportance(url: string, title: string) {
   const lower = `${url} ${title}`.toLowerCase();
-  if (/docs\.google|notion|linear|github|figma|meeting|meet\.google|zoom/.test(lower)) return "should";
+  if (/docs\.google|notion|linear|figma|meeting|meet\.google|zoom/.test(lower) || isCodeRepositoryUrl(url)) return "should";
   if (/pricing|research|paper|eval|benchmark|market map/.test(lower)) return "maybe";
   return "safe";
 }
@@ -549,10 +552,68 @@ function inferTopics(title: string, domain: string, type: ContentType) {
   if (/video|runway|sora|pika/.test(lower)) topics.push("Video");
   if (/pricing|price|subscription|credit/.test(lower)) topics.push("Pricing");
   if (/market|map|research|competitor/.test(lower)) topics.push("Research");
-  if (/github|repo|code/.test(lower) || type === "repo") topics.push("Code");
+  if (/repo|code/.test(lower) || type === "repo") topics.push("Code");
   if (!topics.length) topics.push(type === "article" ? "Reading" : type);
   return topics.slice(0, 4);
 }
+
+function isTransientAuthUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const path = parsed.pathname.toLowerCase().replace(/\/+$/, "");
+    if (host === "github.com" || host === "www.github.com") {
+      return path === "/login" || path.startsWith("/login/") || path === "/session" || path.startsWith("/session/") || path === "/logout";
+    }
+    return host === "accounts.google.com" || host === "login.microsoftonline.com";
+  } catch {
+    return false;
+  }
+}
+
+function isCodeRepositoryUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const segments = parsed.pathname.toLowerCase().split("/").filter(Boolean);
+    if (host === "gist.github.com") return segments.length >= 2;
+    if (host !== "github.com" && host !== "www.github.com" && !host.endsWith(".gitlab.com") && host !== "gitlab.com") return false;
+    if (segments.length < 2) return false;
+    return !CODE_HOST_RESERVED_PATHS.has(segments[0]);
+  } catch {
+    return false;
+  }
+}
+
+const CODE_HOST_RESERVED_PATHS = new Set([
+  "about",
+  "account",
+  "apps",
+  "codespaces",
+  "collections",
+  "contact",
+  "dashboard",
+  "events",
+  "explore",
+  "features",
+  "gist",
+  "issues",
+  "login",
+  "logout",
+  "marketplace",
+  "new",
+  "notifications",
+  "orgs",
+  "organizations",
+  "pricing",
+  "pulls",
+  "search",
+  "security",
+  "session",
+  "settings",
+  "sponsors",
+  "topics"
+]);
 
 function inferEntities(title: string, domain: string) {
   const entities = title.match(/\b[A-Z][A-Za-z0-9]{2,}\b/g) ?? [];
