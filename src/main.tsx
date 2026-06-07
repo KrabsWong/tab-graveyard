@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, BarChart3, Bell, CheckCircle2, Copy, Database, Download, Edit3, Eye, EyeOff, FileUp, Ghost, History, Layers, Loader2, PieChart, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, TrendingUp } from "lucide-react";
+import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, BarChart3, Bell, CheckCircle2, Copy, Database, Download, Edit3, Eraser, Eye, EyeOff, FileUp, Ghost, History, Layers, Link2, Loader2, MousePointerClick, PieChart, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, TrendingUp } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
 import { archiveGhosts, archiveTab, cancelArchivePreview, clearData, confirmArchivePreview, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
@@ -1274,12 +1274,12 @@ function AnalyticsPanel({ snapshot, refresh }: { snapshot: AppSnapshot; refresh:
   return (
     <div className="grid gap-5">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-        <AnalyticsMetric icon={<Database className="h-4 w-4" />} label={labels.totalLinks} value={snapshot.totalTabs} detail={labels.localMemory} />
+        <AnalyticsMetric icon={<Link2 className="h-4 w-4" />} label={labels.totalLinks} value={snapshot.totalTabs} detail={labels.localMemory} />
         <AnalyticsMetric icon={<TrendingUp className="h-4 w-4" />} label={labels.weeklyNew} value={analytics.weeklyNew} detail={formatDelta(analytics.weeklyNew, analytics.previousWeeklyNew, language)} />
-        <AnalyticsMetric icon={<Eye className="h-4 w-4" />} label={labels.weeklyVisits} value={analytics.weeklyVisits} detail={formatDelta(analytics.weeklyVisits, analytics.previousWeeklyVisits, language)} />
+        <AnalyticsMetric icon={<MousePointerClick className="h-4 w-4" />} label={labels.weeklyVisits} value={analytics.weeklyVisits} detail={formatDelta(analytics.weeklyVisits, analytics.previousWeeklyVisits, language)} />
         <AnalyticsMetric icon={<Ghost className="h-4 w-4" />} label={labels.ghostLinks} value={snapshot.ghostTabs.length} detail={formatPercent(snapshot.ghostTabs.length, Math.max(snapshot.totalTabs, 1), language)} />
         <AnalyticsMetric icon={<Archive className="h-4 w-4" />} label={labels.archivedLinks} value={snapshot.archivedTabs.length} detail={formatPercent(snapshot.archivedTabs.length, Math.max(snapshot.totalTabs, 1), language)} />
-        <AnalyticsMetric icon={<Sparkles className="h-4 w-4" />} label={labels.cleanupCandidates} value={analytics.cleanupCandidates} detail={labels.duplicates.replace("{count}", String(analytics.duplicateLinks))} />
+        <AnalyticsMetric icon={<Eraser className="h-4 w-4" />} label={labels.cleanupCandidates} value={analytics.cleanupCandidates} detail={labels.duplicates.replace("{count}", String(analytics.duplicateLinks))} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
