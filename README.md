@@ -4,7 +4,9 @@ Tab Graveyard is a Chrome extension for people who keep too many tabs open becau
 
 The product vision is simple: closing a tab should be a reversible act. Tab Graveyard records lightweight page metadata, helps distinguish useful memories from forgotten noise, and gives users a practical way to recover, review, archive, and resurface browser context.
 
-<img width="1612" height="836" alt="image" src="https://github.com/user-attachments/assets/6cc203ab-db88-435b-a649-93daa6e105cc" />
+<img width="3042" height="1636" alt="home" src="https://github.com/user-attachments/assets/5aa7d278-d24d-492f-bbdc-c6a3386618ab" />
+<img width="2290" height="1130" alt="setting" src="https://github.com/user-attachments/assets/03dd24c1-9532-4256-be5a-2c9907c3aea9" />
+
 
 ## Core Features
 
