@@ -1,7 +1,6 @@
 import {
   addEvent,
   applyRules,
-  createDemoState,
   createInfoCard,
   createSnapshot,
   createTabMemory,
@@ -19,6 +18,7 @@ import {
   recallTabs,
   setState
 } from "@/lib/memory";
+import { CLOUD_AUTH_SERVER_URL, getCloudAuthState, revokeCloudAuthState, setCloudAuthState } from "@/lib/cloud-auth";
 import type { ContentType, ExtensionRequest, ExtensionResponse, GraveyardState, Importance, QuickRecallItem, ReadingStatus, RecallCue, RecallFilters, RecallResult, RecallSynthesisResult, SourceType, TabInfoCard, TabMemory } from "@/lib/types";
 
 const UNDO_MS = 5_000;
@@ -220,14 +220,21 @@ async function handleMessage(request: ExtensionRequest) {
       return mutate(() => addEvent(normalizeState(request.state), "data_imported"));
     case "clearData":
       return mutate(() => addEvent(emptyState(), "data_deleted"));
-    case "seedDemo":
-      return mutate(() => addEvent(createDemoState(), "demo_workspace_seeded"));
     case "importHistory":
       return importHistory();
     case "testDeepSeek":
       return testDeepSeek();
     case "enhanceWithDeepSeek":
       return enhanceWithDeepSeek();
+    case "getCloudAuthStatus":
+      return getCloudAuthStatus();
+    case "startGitHubAuth":
+      return startGitHubAuth();
+    case "pollGitHubAuth":
+      return pollGitHubAuth(request.deviceCode);
+    case "clearCloudAuth":
+      await revokeCloudAuthState();
+      return undefined;
     case "openUrl":
       await chrome.tabs.create({ url: request.url, active: true });
       return undefined;
@@ -238,6 +245,69 @@ async function handleMessage(request: ExtensionRequest) {
       await openDashboard();
       return undefined;
   }
+}
+
+async function getCloudAuthStatus() {
+  const state = await getCloudAuthState();
+  if (!state) return null;
+  return {
+    provider: state.provider,
+    authenticatedAt: state.authenticatedAt,
+    expiresIn: state.expiresIn,
+    user: state.user
+  };
+}
+
+async function startGitHubAuth() {
+  const response = await fetch(new URL("/v1/auth/github/device/start", CLOUD_AUTH_SERVER_URL).toString(), { method: "POST" });
+  const payload = await response.json() as {
+    ok?: boolean;
+    data?: { deviceCode: string; userCode: string; verificationUri: string; verificationUriComplete?: string; expiresIn: number; interval: number };
+    error?: string;
+  };
+  if (!response.ok || !payload.ok || !payload.data?.deviceCode) {
+    throw new Error(payload.error ?? "GitHub authorization could not start.");
+  }
+  await chrome.tabs.create({ url: payload.data.verificationUriComplete ?? payload.data.verificationUri, active: true });
+  return payload.data;
+}
+
+async function pollGitHubAuth(deviceCode: string) {
+  const response = await fetch(new URL("/v1/auth/github/device/poll", CLOUD_AUTH_SERVER_URL).toString(), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ deviceCode })
+  });
+  const payload = await response.json() as {
+    ok?: boolean;
+    data?: (
+      | { status: "pending"; interval?: number }
+      | { status: "expired" }
+      | { status: "denied" }
+      | { status: "authorized"; tokens: { accessToken: string; refreshToken: string; expiresIn: number }; user?: { login?: string; displayName?: string; avatarUrl?: string; bio?: string; followers?: number; following?: number } }
+    );
+    error?: string;
+  };
+  if (!response.ok || !payload.ok || !payload.data) throw new Error(payload.error ?? "GitHub authorization status could not be checked.");
+  if (payload.data.status !== "authorized") return payload.data;
+  const state = {
+    provider: "github" as const,
+    accessToken: payload.data.tokens.accessToken,
+    refreshToken: payload.data.tokens.refreshToken,
+    expiresIn: payload.data.tokens.expiresIn,
+    authenticatedAt: Date.now(),
+    user: payload.data.user
+  };
+  await setCloudAuthState(state);
+  return {
+    status: "authorized" as const,
+    auth: {
+      provider: state.provider,
+      authenticatedAt: state.authenticatedAt,
+      expiresIn: state.expiresIn,
+      user: state.user
+    }
+  };
 }
 
 async function mutate(updater: (state: GraveyardState) => GraveyardState) {

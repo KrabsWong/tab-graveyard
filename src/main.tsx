@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, BarChart3, Bell, CheckCircle2, Copy, Database, Download, Edit3, Eraser, Eye, EyeOff, FileUp, Ghost, History, Layers, Link2, Loader2, MousePointerClick, PieChart, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, TrendingUp } from "lucide-react";
+import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, BarChart3, Bell, CheckCircle2, ChevronDown, Copy, Database, Download, Edit3, Eraser, Eye, EyeOff, FileUp, Ghost, Github, History, Layers, Link2, Loader2, MousePointerClick, PieChart, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, TrendingUp, Users } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
-import { archiveGhosts, archiveTab, cancelArchivePreview, clearData, confirmArchivePreview, exportData, getSnapshot, importData, importHistory, openDashboard, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, seedDemo, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
+import { archiveGhosts, archiveTab, cancelArchivePreview, clearCloudAuth, clearData, confirmArchivePreview, exportData, getCloudAuthStatus, getSnapshot, importData, importHistory, openDashboard, pollGitHubAuth, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, startGitHubAuth, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
-import type { AppSnapshot, BrowseGroupMode, ContentType, LanguageMode, RecallFilters, RecallResult, RecallSynthesisResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
+import type { AppSnapshot, BrowseGroupMode, CloudAuthStatus, ContentType, GitHubDeviceAuthStart, LanguageMode, RecallFilters, RecallResult, RecallSynthesisResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 type Page = "popup" | "newtab" | "dashboard" | "options";
 type UiLanguage = "en" | "zh";
 type DashboardTab = "analytics" | "recall" | "ghosts" | "graveyard" | "sessions";
+type SettingsTab = "general" | "archive" | "resurface" | "privacy" | "ai" | "rules" | "data";
+type ActiveGitHubDeviceAuth = GitHubDeviceAuthStart & {
+  expiresAt: number;
+  intervalMs: number;
+};
 
 const messages = {
   en: {
@@ -31,7 +36,7 @@ const messages = {
     settingsPrivacyTab: "Privacy",
     settingsAiTab: "AI",
     settingsRulesTab: "Rules",
-    settingsDataTab: "Data",
+    settingsDataTab: "Sync & Data",
     settingsArchiveTab: "Archive",
     settingsResurfaceTab: "Resurface",
     settingsSectionStatus: "Status",
@@ -41,7 +46,7 @@ const messages = {
     settingsPrivacyHint: "Recording and privacy boundaries.",
     settingsAiHint: "Provider and AI permissions.",
     settingsRulesHint: "Domains to skip.",
-    settingsDataHint: "Export, import, and logs.",
+    settingsDataHint: "Sync identity, export, import, and logs.",
     todayRecap: "Today's Recap",
     yesterdayRecap: "Yesterday {count} tabs. Standout: {title}.",
     total: "Total",
@@ -198,7 +203,27 @@ const messages = {
     privacyRulesValue: "{count} edited cards · local storage only",
     dataLog: "Data Log",
     leaderboard: "Leaderboard",
-    localOnlyStub: "Local-only prototype: cloud sync and billing are not connected.",
+    localOnlyStub: "Full cloud sync, billing, and public leaderboard services are not enabled yet.",
+    cloudAccount: "Sync Identity",
+    cloudAccountDescription: "Connect GitHub with a device code so future cloud sync can recognize the same user across devices. Sync is not enabled yet.",
+    cloudProvider: "Identity provider",
+    cloudAuthStatus: "Auth status",
+    connectGithub: "Connect GitHub",
+    reconnectGithub: "Reconnect GitHub",
+    githubDeviceCode: "GitHub code",
+    githubDeviceInstructions: "Enter this code on the GitHub device page. This settings page will update automatically after approval.",
+    githubDeviceWaiting: "Waiting for GitHub approval...",
+    githubDeviceExpires: "Code expires at {time}",
+    githubAuthExpired: "GitHub code expired. Start again.",
+    githubAuthDenied: "GitHub authorization was denied.",
+    openGithubDevicePage: "Open GitHub device page",
+    cloudConsentNotice: "After authorization, Tab Graveyard will store your GitHub identity for future sync: GitHub user ID, display name/login, avatar URL, bio, and follower/following counts. Future sync is opt-in and limited to tab memories, sessions, user-edited rules, event logs, and non-AI settings. Local AI provider config and API keys are not uploaded.",
+    githubConnected: "GitHub connected",
+    githubFollowers: "{count} followers",
+    githubFollowing: "{count} following",
+    notConnected: "Not connected",
+    refreshAuthStatus: "Refresh status",
+    clearCloudAuth: "Disconnect this device",
     memoryMatch: "memory match",
     browserMemoryLocal: "Your browser memory stays local by default.",
     firstRun: "First Run",
@@ -210,7 +235,6 @@ const messages = {
     rulesSettingsDescription: "Keep private, noisy, or irrelevant domains out of Tab Memory.",
     dataSettingsDescription: "Export, import, inspect local events, or clear local memory.",
     importHistory: "Import history",
-    useDemo: "Use demo",
     startEmpty: "Start empty",
     privacyRecording: "Privacy & Recording",
     privacyDescription: "Local recording controls and privacy boundaries.",
@@ -285,15 +309,13 @@ const messages = {
     actionFailed: "Action failed",
     dataExported: "Data exported",
     historyImported: "History imported",
-    demoLoaded: "Demo workspace loaded",
     dataCleared: "Local memory cleared",
     dataPortability: "Data Portability",
-    dataDescription: "Export, import, seed demo data, or clear local memory.",
+    dataDescription: "Export, import, or clear local memory.",
     exportJson: "Export JSON",
     importJson: "Import JSON",
     dataImported: "Data imported",
     import30dHistory: "Import 30d history",
-    demoWorkspace: "Demo workspace",
     clearAll: "Clear all",
     importTitle: "Import Tab Graveyard Data",
     importDescription: "Paste a JSON export. Existing local data will be replaced.",
@@ -313,7 +335,7 @@ const messages = {
     settingsPrivacyTab: "隐私",
     settingsAiTab: "AI",
     settingsRulesTab: "规则",
-    settingsDataTab: "数据",
+    settingsDataTab: "同步与数据",
     settingsArchiveTab: "归档",
     settingsResurfaceTab: "唤醒",
     settingsSectionStatus: "状态",
@@ -323,7 +345,7 @@ const messages = {
     settingsPrivacyHint: "记录开关与隐私边界。",
     settingsAiHint: "服务商与 AI 权限。",
     settingsRulesHint: "需要跳过的域名。",
-    settingsDataHint: "导入导出与日志。",
+    settingsDataHint: "同步身份、导入导出与日志。",
     todayRecap: "今日回顾",
     yesterdayRecap: "昨天打开了 {count} 个标签。最重要的是：{title}。",
     total: "总数",
@@ -480,7 +502,27 @@ const messages = {
     privacyRulesValue: "{count} 张已编辑信息卡 · 仅本地存储",
     dataLog: "数据日志",
     leaderboard: "排行榜",
-    localOnlyStub: "本地原型：云同步和计费后端未连接。",
+    localOnlyStub: "完整云同步、计费和公开排行榜服务尚未启用。",
+    cloudAccount: "同步身份",
+    cloudAccountDescription: "通过设备码连接 GitHub，让未来的云端同步能在不同设备上识别同一个用户。同步功能尚未启用。",
+    cloudProvider: "身份提供方",
+    cloudAuthStatus: "授权状态",
+    connectGithub: "连接 GitHub",
+    reconnectGithub: "重新连接 GitHub",
+    githubDeviceCode: "GitHub 验证码",
+    githubDeviceInstructions: "在 GitHub 设备验证页面输入这个验证码。授权完成后，本设置页会自动更新。",
+    githubDeviceWaiting: "正在等待 GitHub 授权...",
+    githubDeviceExpires: "验证码过期时间：{time}",
+    githubAuthExpired: "GitHub 验证码已过期，请重新开始。",
+    githubAuthDenied: "GitHub 授权已被拒绝。",
+    openGithubDevicePage: "打开 GitHub 设备验证页",
+    cloudConsentNotice: "授权后，Tab Graveyard 会保存你的 GitHub 身份信息，用于未来同步时识别同一个用户：GitHub 用户 ID、显示名称或登录名、头像 URL、简介，以及 followers/following 数量。后续同步需要你主动启用，范围仅限标签记忆、会话、用户编辑规则、事件日志和非 AI 设置。本地 AI 服务配置和 API Key 不会上传。",
+    githubConnected: "GitHub 已连接",
+    githubFollowers: "关注者{count}",
+    githubFollowing: "正在关注 {count}",
+    notConnected: "未连接",
+    refreshAuthStatus: "刷新状态",
+    clearCloudAuth: "断开此设备",
     memoryMatch: "记忆匹配",
     browserMemoryLocal: "你的浏览记忆默认只保存在本地。",
     firstRun: "首次启动",
@@ -492,7 +534,6 @@ const messages = {
     rulesSettingsDescription: "把私密、嘈杂或无关的域名排除在 Tab Memory 之外。",
     dataSettingsDescription: "导出、导入、查看本地事件，或清空本地记忆。",
     importHistory: "导入历史",
-    useDemo: "使用示例",
     startEmpty: "从零开始",
     privacyRecording: "隐私与记录",
     privacyDescription: "本地记录控制与隐私边界。",
@@ -567,15 +608,13 @@ const messages = {
     actionFailed: "操作失败",
     dataExported: "数据已导出",
     historyImported: "历史记录已导入",
-    demoLoaded: "示例工作区已载入",
     dataCleared: "本地记忆已清空",
     dataPortability: "数据迁移",
-    dataDescription: "导出、导入、使用示例数据，或清空本地记忆。",
+    dataDescription: "导出、导入，或清空本地记忆。",
     exportJson: "导出 JSON",
     importJson: "导入 JSON",
     dataImported: "数据已导入",
     import30dHistory: "导入 30 天历史",
-    demoWorkspace: "示例工作区",
     clearAll: "清空全部",
     importTitle: "导入 Tab Graveyard 数据",
     importDescription: "粘贴 JSON 导出内容。现有本地数据会被替换。",
@@ -809,11 +848,35 @@ function navigateDashboard(tab: DashboardTab) {
   window.location.href = path;
 }
 
+function openSettings(tab?: SettingsTab) {
+  const path = tab ? `options.html#${tab}` : "options.html";
+  if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
+    if (!tab && chrome.runtime.openOptionsPage) {
+      chrome.runtime.openOptionsPage();
+      return;
+    }
+    const url = chrome.runtime.getURL(path);
+    if (chrome.tabs?.create) {
+      chrome.tabs.create({ url, active: true });
+      return;
+    }
+    window.location.href = url;
+    return;
+  }
+  window.location.href = path;
+}
+
+function getSettingsTabFromHash() {
+  const value = window.location.hash.replace("#", "");
+  return ["general", "archive", "resurface", "privacy", "ai", "rules", "data"].includes(value) ? value as SettingsTab : "general";
+}
+
 function App() {
   const page = (document.body.dataset.page as Page) ?? "dashboard";
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [cloudAuthStatus, setCloudAuthStatus] = useState<CloudAuthStatus>(null);
 
   const refresh = async () => {
     try {
@@ -824,8 +887,29 @@ function App() {
     }
   };
 
+  const refreshCloudAuthStatus = async () => {
+    try {
+      setCloudAuthStatus(await getCloudAuthStatus());
+    } catch {
+      setCloudAuthStatus(null);
+    }
+  };
+
   useEffect(() => {
     void refresh();
+  }, []);
+
+  useEffect(() => {
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "hidden") void refreshCloudAuthStatus();
+    };
+    refreshWhenVisible();
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, []);
 
   const themeMode = snapshot?.settings.theme ?? "system";
@@ -856,16 +940,146 @@ function App() {
   return (
     <I18nContext.Provider value={{ language, t }}>
       <ToastContext.Provider value={notify}>
-        {page === "popup" ? <Popup snapshot={snapshot} refresh={refresh} error={error} /> : null}
-        {page === "options" ? <SettingsPage snapshot={snapshot} refresh={refresh} /> : null}
-        {page === "newtab" || page === "dashboard" ? <Workspace page={page} snapshot={snapshot} refresh={refresh} /> : null}
+        {page === "popup" ? <Popup snapshot={snapshot} refresh={refresh} error={error} cloudAuthStatus={cloudAuthStatus} /> : null}
+        {page === "options" ? <SettingsPage snapshot={snapshot} refresh={refresh} cloudAuthStatus={cloudAuthStatus} onCloudAuthStatusChange={setCloudAuthStatus} /> : null}
+        {page === "newtab" || page === "dashboard" ? <Workspace page={page} snapshot={snapshot} refresh={refresh} cloudAuthStatus={cloudAuthStatus} /> : null}
         {toast ? <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-lg">{toast}</div> : null}
       </ToastContext.Provider>
     </I18nContext.Provider>
   );
 }
 
-function Popup({ snapshot, refresh, error }: { snapshot: AppSnapshot; refresh: () => Promise<void>; error: string | null }) {
+function SyncIdentityButton({ status, compact = false, onClick }: { status: CloudAuthStatus; compact?: boolean; onClick: () => void }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const user = status?.user;
+  const name = status ? user?.displayName ?? user?.login ?? "GitHub" : t.cloudAccount;
+  const stats = status ? formatGithubIdentityStats(user, t) : t.connectGithub;
+  const bio = status ? user?.bio?.trim() : "";
+  const login = status && user?.login ? `@${user.login}` : "";
+  const title = status ? `${t.cloudAccount}: ${name}` : `${t.cloudAccount}: ${t.connectGithub}`;
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
+  const openSettings = () => {
+    setOpen(false);
+    onClick();
+  };
+
+  return (
+    <div ref={rootRef} className="relative inline-flex min-w-0">
+      <button
+        type="button"
+        className={cn(
+          "inline-flex min-w-0 items-center gap-2 rounded-md border bg-background text-left shadow-sm transition hover:bg-accent",
+          compact ? "max-w-[178px] px-2 py-1.5" : "max-w-xs px-2.5 py-2"
+        )}
+        title={title}
+        aria-label={title}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        {status && user?.avatarUrl ? (
+          <img className="h-8 w-8 shrink-0 rounded-full border object-cover" src={user.avatarUrl} alt="" />
+        ) : (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border bg-muted">
+            <Github className="h-4 w-4" />
+          </span>
+        )}
+        <span className="grid min-w-0 leading-tight">
+          <span className="truncate text-sm font-semibold">{name}</span>
+          <span className="truncate text-xs text-muted-foreground">{stats}</span>
+        </span>
+        <ChevronDown className={cn("ml-1 h-4 w-4 shrink-0 text-muted-foreground transition", open && "rotate-180")} />
+      </button>
+
+      {open ? (
+        <div
+          className={cn(
+            "absolute right-0 top-full z-50 mt-2 grid rounded-md border bg-popover p-4 text-popover-foreground shadow-xl",
+            compact ? "w-72" : "w-80"
+          )}
+          role="dialog"
+        >
+          {status ? (
+            <div className="grid gap-4">
+              <div className="flex items-start gap-3">
+                {user?.avatarUrl ? (
+                  <img className="h-16 w-16 shrink-0 rounded-full border object-cover" src={user.avatarUrl} alt="" />
+                ) : (
+                  <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border bg-muted">
+                    <Github className="h-7 w-7" />
+                  </span>
+                )}
+                <div className="min-w-0 pt-1">
+                  <p className="truncate text-xl font-semibold leading-6">{name}</p>
+                  {login ? <p className="truncate text-sm text-muted-foreground">{login}</p> : null}
+                </div>
+              </div>
+
+              {bio ? <p className="line-clamp-3 max-w-full break-words text-sm leading-6 text-foreground [overflow-wrap:anywhere]">{bio}</p> : null}
+
+              <div className="flex min-w-0 items-center gap-2 text-sm text-muted-foreground">
+                <Users className="h-4 w-4 shrink-0" />
+                <span className="truncate">{stats}</span>
+              </div>
+
+              <Button variant="outline" className="w-full" onClick={openSettings}>
+                <Settings className="h-4 w-4" />
+                {t.settings}
+              </Button>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              <div className="flex items-start gap-3">
+                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border bg-muted">
+                  <Github className="h-6 w-6" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-base font-semibold">{t.cloudAccount}</p>
+                  <p className="text-sm leading-5 text-muted-foreground">{t.connectGithub}</p>
+                </div>
+              </div>
+              <p className="text-sm leading-6 text-muted-foreground">{t.cloudAccountDescription}</p>
+              <Button className="w-full" onClick={openSettings}>
+                <Github className="h-4 w-4" />
+                {t.connectGithub}
+              </Button>
+            </div>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function formatGithubIdentityStats(user: NonNullable<CloudAuthStatus>["user"], t: Text) {
+  if (!user) return t.githubConnected;
+  const stats = [
+    typeof user.followers === "number" ? interpolate(t.githubFollowers, { count: user.followers }) : "",
+    typeof user.following === "number" ? interpolate(t.githubFollowing, { count: user.following }) : ""
+  ].filter(Boolean).join(" · ");
+  if (stats) return stats;
+  return user.login ? `@${user.login}` : t.githubConnected;
+}
+
+function Popup({ snapshot, refresh, error, cloudAuthStatus }: { snapshot: AppSnapshot; refresh: () => Promise<void>; error: string | null; cloudAuthStatus: CloudAuthStatus }) {
   const { t } = useI18n();
   const ghostIds = useMemo(() => new Set(snapshot.ghostTabs.map((tab) => tab.id)), [snapshot.ghostTabs]);
   const recallTop = useMemo(
@@ -891,16 +1105,14 @@ function Popup({ snapshot, refresh, error }: { snapshot: AppSnapshot; refresh: (
   return (
     <main className="popup-body flex flex-col gap-3 overflow-x-hidden p-4">
       <header className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <AppLogo size="sm" />
           <div className="min-w-0">
             <h1 className="truncate text-lg font-semibold">{t.appName}</h1>
             <p className="truncate text-xs text-muted-foreground">{t.tagline}</p>
           </div>
         </div>
-        <Button variant="ghost" size="icon" title={t.settings} onClick={() => chrome.runtime.openOptionsPage()}>
-          <Settings className="h-4 w-4" />
-        </Button>
+        <SyncIdentityButton status={cloudAuthStatus} compact onClick={() => openSettings(cloudAuthStatus ? undefined : "data")} />
       </header>
 
       {error ? <p className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">{error}</p> : null}
@@ -947,7 +1159,7 @@ function Popup({ snapshot, refresh, error }: { snapshot: AppSnapshot; refresh: (
   );
 }
 
-function Workspace({ page, snapshot, refresh }: { page: Page; snapshot: AppSnapshot; refresh: () => Promise<void> }) {
+function Workspace({ page, snapshot, refresh, cloudAuthStatus }: { page: Page; snapshot: AppSnapshot; refresh: () => Promise<void>; cloudAuthStatus: CloudAuthStatus }) {
   const { t } = useI18n();
   const [logoOpen, setLogoOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -995,11 +1207,7 @@ function Workspace({ page, snapshot, refresh }: { page: Page; snapshot: AppSnaps
                 <p className="text-sm text-muted-foreground">{t.tagline}</p>
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => chrome.runtime.openOptionsPage()}>
-                <Settings className="h-4 w-4" /> {t.settings}
-              </Button>
-            </div>
+            <SyncIdentityButton status={cloudAuthStatus} onClick={() => openSettings(cloudAuthStatus ? undefined : "data")} />
           </header>
           <RecallSearchBar query={query} setQuery={setQuery} isSearching={isSearching} onSubmit={submitSearch} aiAvailable={aiAvailable} fallbackReason={aiFallbackReason} />
         </div>
@@ -2766,7 +2974,7 @@ function formatFilterBadge(key: string, value: string, language: UiLanguage, t: 
   return `${labels[key] ?? key}: ${value}`;
 }
 
-function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: () => Promise<void> }) {
+function SettingsPage({ snapshot, refresh, cloudAuthStatus, onCloudAuthStatusChange }: { snapshot: AppSnapshot; refresh: () => Promise<void>; cloudAuthStatus: CloudAuthStatus; onCloudAuthStatusChange: (status: CloudAuthStatus) => void }) {
   const { language, t } = useI18n();
   const notify = useToast();
   const [logoOpen, setLogoOpen] = useState(false);
@@ -2774,9 +2982,12 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
   const [deepSeekStatus, setDeepSeekStatus] = useState<string | null>(null);
   const [deepSeekStatusKind, setDeepSeekStatusKind] = useState<"success" | "error" | "info">("info");
   const [deepSeekTesting, setDeepSeekTesting] = useState(false);
-  const [settingsTab, setSettingsTab] = useState("general");
+  const [settingsTab, setSettingsTab] = useState(getSettingsTabFromHash);
   const [settingsAction, setSettingsAction] = useState<string | null>(null);
-  const [settingsStatus, setSettingsStatus] = useState<{ variant: "success" | "error"; title: string; description: string } | null>(null);
+  const [settingsStatus, setSettingsStatus] = useState<{ variant: "success" | "error"; title: string; description: string; actionId?: string } | null>(null);
+  const [cloudAuthError, setCloudAuthError] = useState<string | null>(null);
+  const [githubDeviceAuth, setGithubDeviceAuth] = useState<ActiveGitHubDeviceAuth | null>(null);
+  const [githubDevicePolling, setGithubDevicePolling] = useState(false);
 
   const update = async (settings: Partial<SettingsType>) => {
     await saveSettings(settings);
@@ -2806,15 +3017,91 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
     try {
       await action();
       notify(successMessage);
-      if (actionId) setSettingsStatus({ variant: "success", title: t.actionComplete, description: successMessage });
+      if (actionId) setSettingsStatus({ variant: "success", title: t.actionComplete, description: successMessage, actionId });
     } catch (error) {
       const message = error instanceof Error ? error.message : t.actionFailed;
       notify(message);
-      if (actionId) setSettingsStatus({ variant: "error", title: t.actionFailed, description: message });
+      if (actionId) setSettingsStatus({ variant: "error", title: t.actionFailed, description: message, actionId });
     } finally {
       if (actionId) setSettingsAction(null);
     }
   };
+
+  const refreshCloudAuthStatus = async () => {
+    const status = await getCloudAuthStatus();
+    onCloudAuthStatusChange(status);
+    return status;
+  };
+
+  useEffect(() => {
+    const refreshOnFocus = () => {
+      void refreshCloudAuthStatus();
+    };
+    refreshOnFocus();
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    return () => {
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!githubDeviceAuth) return undefined;
+    let cancelled = false;
+    let timeoutId: number | undefined;
+
+    const schedule = (delayMs: number) => {
+      timeoutId = window.setTimeout(poll, delayMs);
+    };
+
+    const poll = async () => {
+      if (Date.now() >= githubDeviceAuth.expiresAt) {
+        setCloudAuthError(t.githubAuthExpired);
+        setGithubDeviceAuth(null);
+        return;
+      }
+      setGithubDevicePolling(true);
+      try {
+        const result = await pollGitHubAuth(githubDeviceAuth.deviceCode);
+        if (cancelled) return;
+        if (result.status === "authorized") {
+          onCloudAuthStatusChange(result.auth);
+          setGithubDeviceAuth(null);
+          setCloudAuthError(null);
+          return;
+        }
+        if (result.status === "expired") {
+          setCloudAuthError(t.githubAuthExpired);
+          setGithubDeviceAuth(null);
+          return;
+        }
+        if (result.status === "denied") {
+          setCloudAuthError(t.githubAuthDenied);
+          setGithubDeviceAuth(null);
+          return;
+        }
+        const nextIntervalMs = Math.max(1000, (result.interval ?? Math.round(githubDeviceAuth.intervalMs / 1000)) * 1000);
+        if (nextIntervalMs !== githubDeviceAuth.intervalMs) {
+          setGithubDeviceAuth((current) => current && current.deviceCode === githubDeviceAuth.deviceCode ? { ...current, intervalMs: nextIntervalMs } : current);
+        }
+        schedule(nextIntervalMs);
+      } catch (error) {
+        if (!cancelled) {
+          setCloudAuthError(error instanceof Error ? error.message : t.actionFailed);
+          schedule(githubDeviceAuth.intervalMs);
+        }
+      } finally {
+        if (!cancelled) setGithubDevicePolling(false);
+      }
+    };
+
+    schedule(githubDeviceAuth.intervalMs);
+    return () => {
+      cancelled = true;
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, [githubDeviceAuth?.deviceCode, githubDeviceAuth?.intervalMs, githubDeviceAuth?.expiresAt, t.actionFailed, t.githubAuthDenied, t.githubAuthExpired]);
 
   const languageLabel = snapshot.settings.language === "zh" ? t.chinese : snapshot.settings.language === "en" ? t.english : t.system;
   const themeLabel = enumMeta("theme", snapshot.settings.theme, language).label;
@@ -2830,6 +3117,11 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
   const aiProviderLabel = canUseAiFeatures(snapshot.settings)
     ? snapshot.settings.deepSeek.enabled ? t.providerDeepSeek : t.providerChromeLocal
     : t.disabled;
+  const cloudAuthLabel = cloudAuthStatus
+    ? `${t.githubConnected} · ${new Date(cloudAuthStatus.authenticatedAt).toLocaleString()}`
+    : t.notConnected;
+  const dataMigrationActions = ["export", "history", "clear"];
+  const isDataMigrationAction = settingsAction ? dataMigrationActions.includes(settingsAction) : false;
   const settingsSections = [
     { value: "general", title: t.settingsGeneralTab, description: t.settingsGeneralHint, icon: <SlidersHorizontal className="h-4 w-4" /> },
     { value: "archive", title: t.settingsArchiveTab, description: t.settingsArchiveHint, icon: <Archive className="h-4 w-4" /> },
@@ -2842,23 +3134,37 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
 
   return (
     <main className="mx-auto grid min-h-screen w-full max-w-6xl content-start items-start gap-5 px-4 py-5 sm:px-6 lg:py-7">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <AppLogo size="lg" onClick={() => setLogoOpen(true)} />
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold">{t.settings}</h1>
-            <p className="text-sm text-muted-foreground">{t.browserMemoryLocal}</p>
-          </div>
+      <header className="grid gap-3">
+        <div>
+          <Button
+            className="-ml-2 h-8 px-2 text-muted-foreground hover:text-foreground"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              if (window.history.length > 1) window.history.back();
+              else void openDashboard();
+            }}
+          >
+            <ArrowLeft className="h-4 w-4" /> {t.back}
+          </Button>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => {
-            if (window.history.length > 1) window.history.back();
-            else void openDashboard();
-          }}
-        >
-          <ArrowLeft className="h-4 w-4" /> {t.back}
-        </Button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <AppLogo size="lg" onClick={() => setLogoOpen(true)} />
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold">{t.settings}</h1>
+              <p className="text-sm text-muted-foreground">{t.browserMemoryLocal}</p>
+            </div>
+          </div>
+          <SyncIdentityButton
+            status={cloudAuthStatus}
+            onClick={() => {
+              setSettingsTab("data");
+              window.history.replaceState(null, document.title, "#data");
+              window.scrollTo(0, 0);
+            }}
+          />
+        </div>
       </header>
 
       {!snapshot.settings.onboardingComplete ? <Onboarding refresh={refresh} /> : null}
@@ -2866,7 +3172,8 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
       <Tabs
         value={settingsTab}
         onValueChange={(value) => {
-          setSettingsTab(value);
+          setSettingsTab(value as SettingsTab);
+          window.history.replaceState(null, document.title, `#${value}`);
           window.scrollTo(0, 0);
         }}
         className="grid w-full items-start gap-5 lg:grid-cols-[260px_minmax(0,1fr)]"
@@ -3136,20 +3443,129 @@ function SettingsPage({ snapshot, refresh }: { snapshot: AppSnapshot; refresh: (
               items={[
                 { label: t.localMemory, value: String(snapshot.tabs.length) },
                 { label: t.archived, value: String(snapshot.archivedTabs.length) },
-                { label: t.dataLog, value: String(snapshot.events.length) },
-                { label: t.blockedDomains, value: String(snapshot.settings.blacklistDomains.length) }
+                { label: t.dataLog, value: String(snapshot.events.length) }
               ]}
             />
+            <SettingsPanel title={t.cloudAccount} description={t.cloudAccountDescription}>
+              <div className="grid gap-3 rounded-md border bg-muted/30 p-3 text-sm md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                <div className="grid min-w-0 gap-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <Github className="h-4 w-4" />
+                    <span className="font-medium">{t.cloudProvider}: GitHub</span>
+                  </div>
+                  <p className="flex min-w-0 flex-wrap items-center gap-2 break-words text-muted-foreground">
+                    <span>{t.cloudAuthStatus}: {cloudAuthLabel}</span>
+                    <button
+                      type="button"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md border bg-background text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-70"
+                      title={t.refreshAuthStatus}
+                      aria-label={t.refreshAuthStatus}
+                      disabled={settingsAction === "cloud-auth-refresh"}
+                      onClick={async () => {
+                        setSettingsAction("cloud-auth-refresh");
+                        setCloudAuthError(null);
+                        try {
+                          await refreshCloudAuthStatus();
+                        } catch (error) {
+                          setCloudAuthError(error instanceof Error ? error.message : t.actionFailed);
+                        } finally {
+                          setSettingsAction(null);
+                        }
+                      }}
+                    >
+                      {settingsAction === "cloud-auth-refresh" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                    </button>
+                  </p>
+                  {cloudAuthError ? <p className="break-words text-destructive">{cloudAuthError}</p> : null}
+                </div>
+                <div className="grid justify-items-start gap-2 md:justify-items-end">
+                  <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+                    <AsyncButton
+                      variant="outline"
+                      busy={settingsAction === "github-auth"}
+                      busyLabel={t.loading}
+                      onClick={async () => {
+                        setSettingsAction("github-auth");
+                        setCloudAuthError(null);
+                        try {
+                          const deviceAuth = await startGitHubAuth();
+                          setGithubDeviceAuth({
+                            ...deviceAuth,
+                            expiresAt: Date.now() + deviceAuth.expiresIn * 1000,
+                            intervalMs: Math.max(1000, deviceAuth.interval * 1000)
+                          });
+                          setSettingsTab("data");
+                          window.history.replaceState(null, document.title, "#data");
+                        } catch (error) {
+                          setCloudAuthError(error instanceof Error ? error.message : t.actionFailed);
+                        } finally {
+                          setSettingsAction(null);
+                        }
+                      }}
+                    >
+                      <Github className="h-4 w-4" /> {cloudAuthStatus ? t.reconnectGithub : t.connectGithub}
+                    </AsyncButton>
+                    {cloudAuthStatus ? (
+                      <AsyncButton
+                        variant="outline"
+                        busy={settingsAction === "cloud-auth-clear"}
+                        busyLabel={t.loading}
+                        onClick={async () => {
+                          setSettingsAction("cloud-auth-clear");
+                          setCloudAuthError(null);
+                          try {
+                            await clearCloudAuth();
+                            onCloudAuthStatusChange(null);
+                          } catch (error) {
+                            setCloudAuthError(error instanceof Error ? error.message : t.actionFailed);
+                          } finally {
+                            setSettingsAction(null);
+                          }
+                        }}
+                      >
+                        {t.clearCloudAuth}
+                      </AsyncButton>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-start gap-2 rounded-md border border-sky-200 bg-sky-50 p-3 text-sm leading-6 text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-100">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>{t.cloudConsentNotice}</p>
+              </div>
+              {settingsAction === "github-auth" ? <PendingBlock title={t.loading} description={t.cloudAccountDescription} /> : null}
+              {githubDeviceAuth ? (
+                <div className="grid gap-3 rounded-md border bg-background p-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-sm font-medium">{t.githubDeviceCode}</span>
+                    <code className="rounded-md border bg-muted px-3 py-2 font-mono text-lg font-semibold tracking-widest">{githubDeviceAuth.userCode}</code>
+                    {githubDevicePolling ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+                  </div>
+                  <p className="text-sm leading-6 text-muted-foreground">{t.githubDeviceInstructions}</p>
+                  <p className="text-xs text-muted-foreground">{interpolate(t.githubDeviceExpires, { time: new Date(githubDeviceAuth.expiresAt).toLocaleTimeString() })}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button asChild variant="outline" size="sm">
+                      <a href={githubDeviceAuth.verificationUriComplete ?? githubDeviceAuth.verificationUri} target="_blank" rel="noreferrer">
+                        <Github className="h-4 w-4" /> {t.openGithubDevicePage}
+                      </a>
+                    </Button>
+                    <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                      {githubDevicePolling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                      {t.githubDeviceWaiting}
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+            </SettingsPanel>
             <SettingsPanel title={t.dataPortability} description={t.dataSettingsDescription}>
               <div className="flex flex-wrap gap-2">
                 <AsyncButton variant="outline" busy={settingsAction === "export"} busyLabel={t.exporting} onClick={() => runWithToast(download, t.dataExported, "export")}><Download className="h-4 w-4" /> {t.exportJson}</AsyncButton>
                 <ImportButton refresh={refresh} />
                 <AsyncButton variant="outline" busy={settingsAction === "history"} busyLabel={t.importing} onClick={() => runWithToast(async () => { await importHistory(); await refresh(); }, t.historyImported, "history")}><History className="h-4 w-4" /> {t.import30dHistory}</AsyncButton>
-                <AsyncButton variant="outline" busy={settingsAction === "demo"} busyLabel={t.importing} onClick={() => runWithToast(async () => { await seedDemo(); await refresh(); }, t.demoLoaded, "demo")}><Sparkles className="h-4 w-4" /> {t.demoWorkspace}</AsyncButton>
                 <AsyncButton variant="destructive" busy={settingsAction === "clear"} busyLabel={t.saving} onClick={() => runWithToast(async () => { await clearData(); await refresh(); }, t.dataCleared, "clear")}><Trash2 className="h-4 w-4" /> {t.clearAll}</AsyncButton>
               </div>
-              {settingsTab === "data" && settingsAction ? <PendingBlock title={settingsAction === "export" ? t.exporting : settingsAction === "clear" ? t.saving : t.importing} description={t.dataDescription} /> : null}
-              {settingsTab === "data" && settingsStatus ? <StatusCallout variant={settingsStatus.variant} title={settingsStatus.title} description={settingsStatus.description} /> : null}
+              {settingsTab === "data" && isDataMigrationAction ? <PendingBlock title={settingsAction === "export" ? t.exporting : settingsAction === "clear" ? t.saving : t.importing} description={t.dataDescription} /> : null}
+              {settingsTab === "data" && settingsStatus && dataMigrationActions.includes(settingsStatus.actionId ?? "") ? <StatusCallout variant={settingsStatus.variant} title={settingsStatus.title} description={settingsStatus.description} /> : null}
             </SettingsPanel>
 
             <Card>
@@ -3293,14 +3709,14 @@ function formatEventType(type: string) {
 
 function Onboarding({ refresh }: { refresh: () => Promise<void> }) {
   const { t } = useI18n();
-  const [action, setAction] = useState<"history" | "demo" | "empty" | null>(null);
+  const [action, setAction] = useState<"history" | "empty" | null>(null);
   return (
     <Card className="border-primary/30">
       <CardHeader>
         <CardTitle>{t.firstRun}</CardTitle>
         <CardDescription>{t.firstRunDescription}</CardDescription>
       </CardHeader>
-      <CardContent className="grid gap-3 md:grid-cols-3">
+      <CardContent className="grid gap-3 md:grid-cols-2">
         <AsyncButton
           busy={action === "history"}
           busyLabel={t.importing}
@@ -3316,23 +3732,6 @@ function Onboarding({ refresh }: { refresh: () => Promise<void> }) {
           }}
         >
           {t.importHistory}
-        </AsyncButton>
-        <AsyncButton
-          variant="secondary"
-          busy={action === "demo"}
-          busyLabel={t.importing}
-          onClick={async () => {
-            setAction("demo");
-            try {
-              await seedDemo();
-              await saveSettings({ onboardingComplete: true });
-              await refresh();
-            } finally {
-              setAction(null);
-            }
-          }}
-        >
-          {t.useDemo}
         </AsyncButton>
         <AsyncButton
           variant="outline"

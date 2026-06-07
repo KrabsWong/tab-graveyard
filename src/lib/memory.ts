@@ -66,7 +66,7 @@ export function isExtensionRuntime() {
 }
 
 export async function getState(): Promise<GraveyardState> {
-  if (!isExtensionRuntime()) return createDemoState();
+  if (!isExtensionRuntime()) return emptyState();
   const data = await chrome.storage.local.get(STORAGE_KEY);
   return normalizeState(data[STORAGE_KEY]);
 }
@@ -275,48 +275,6 @@ export function createInfoCard(title: string, url: string, existing?: TabInfoCar
     aiEnhanceFailedAt: existing?.aiEnhanceFailedAt,
     aiEnhanceFailureReason: existing?.aiEnhanceFailureReason
   };
-}
-
-export function createDemoState(): GraveyardState {
-  const now = Date.now();
-  const demos = [
-    ["Runway Pricing", "https://runwayml.com/pricing", "AI video pricing research", "safe"],
-    ["Karpathy: Intro to LLMs", "https://www.youtube.com/watch?v=zjkBMFhNj_g", "LLM evaluation video", "should"],
-    ["The AI Video Market Map", "https://substack.com/home/post/p-123456", "AI video market map", "maybe"],
-    ["OpenAI Evals", "https://github.com/openai/evals", "LLM evaluation repo", "must"],
-    ["Q3 Planning Notes", "https://notion.so/example", "planning doc", "should"]
-  ] as const;
-  const tabs = demos.map(([title, url, summary, importance], index) => {
-    const openedAt = now - (index + 1) * 28 * 60 * 60 * 1000;
-    return {
-      id: makeId("demo"),
-      url,
-      title,
-      domain: getDomain(url),
-      openedAt,
-      lastActivatedAt: openedAt + 18 * 60 * 1000,
-      pinned: false,
-      audible: false,
-      archived: index < 3,
-      archivedAt: index < 3 ? openedAt + 2 * 60 * 60 * 1000 : undefined,
-    restored: false,
-    sessionId: "session-demo-ai-video",
-      card: { ...createInfoCard(title, url), summary, importance },
-      signals: {
-        ...defaultBehaviorSignals(),
-        activeMs: (index + 1) * 7 * 60 * 1000,
-        activationCount: index + 2,
-        maxScrollPercent: index === 0 ? 86 : 42
-      }
-    } satisfies TabMemory;
-  });
-  return ensureSessions({
-    tabs,
-    sessions: [],
-    settings: { ...defaultSettings, onboardingComplete: true },
-    rules: [],
-    events: []
-  });
 }
 
 export function addEvent(state: GraveyardState, type: string, meta?: AnalyticsEvent["meta"]): GraveyardState {

@@ -20,6 +20,7 @@ The product vision is simple: closing a tab should be a reversible act. Tab Grav
 - Track local behavior signals such as activation, active time, scroll depth, copied URL, restore, and resurface feedback.
 - Configure DeepSeek API access for AI-enhanced summaries, topics, entities, importance, possible search terms, and session names.
 - Keep privacy controls explicit with strict local-only mode, blacklist rules, data export/import, and a data log.
+- Pair a GitHub identity with the deployed Tab Graveyard Server through GitHub Device Flow.
 
 ## Privacy Model
 
@@ -43,6 +44,26 @@ Never captured:
 - page body text by default
 
 When DeepSeek enhancement is enabled and strict privacy mode is off, the extension sends only local metadata such as title, URL, domain, and existing memory-card fields to the configured DeepSeek-compatible endpoint.
+
+## Sync Identity
+
+The extension can connect to Tab Graveyard Server through GitHub OAuth Device Flow. This is used only as a stable user identity for future cloud sync. It does not enable data sync by itself.
+
+The current production server is:
+
+```text
+https://tab-graveyard-server.yooooo.workers.dev
+```
+
+After GitHub authorization, the extension stores local access and refresh tokens in `chrome.storage.local`. The server stores GitHub identity fields needed to recognize the same user across devices:
+
+- GitHub user ID
+- login/display name
+- avatar URL
+- bio
+- follower/following counts
+
+GitHub email is not requested or displayed. Local AI provider configuration and API keys are not uploaded.
 
 ## Install In Chrome
 
@@ -91,4 +112,4 @@ The main extension surfaces are:
 
 This repository implements the local Chrome extension prototype described in `docs/Tab-Graveyard-PRD-Final.md`.
 
-Cloud sync, billing, and public leaderboard backends are not implemented. Related UI surfaces are local-only placeholders for product validation.
+GitHub identity pairing is connected to the deployed Tab Graveyard Server. Full tab-memory sync, billing, and public leaderboard backends are not enabled yet. Related UI surfaces remain local-first unless explicitly connected to the server.

@@ -254,10 +254,13 @@ export type ExtensionRequest =
   | { type: "exportData" }
   | { type: "importData"; state: GraveyardState }
   | { type: "clearData" }
-  | { type: "seedDemo" }
   | { type: "importHistory" }
   | { type: "testDeepSeek" }
   | { type: "enhanceWithDeepSeek" }
+  | { type: "getCloudAuthStatus" }
+  | { type: "startGitHubAuth" }
+  | { type: "pollGitHubAuth"; deviceCode: string }
+  | { type: "clearCloudAuth" }
   | { type: "openUrl"; url: string }
   | { type: "openMemoryTab"; tabId: string }
   | { type: "openDashboard" };
@@ -266,6 +269,35 @@ export type DeepSeekEnhanceResult = {
   enhancedTabs: number;
   renamedSessions: number;
 };
+
+export type CloudAuthStatus = {
+  provider: "github";
+  authenticatedAt: number;
+  expiresIn: number;
+  user?: {
+    login?: string;
+    displayName?: string;
+    avatarUrl?: string;
+    bio?: string;
+    followers?: number;
+    following?: number;
+  };
+} | null;
+
+export type GitHubDeviceAuthStart = {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete?: string;
+  expiresIn: number;
+  interval: number;
+};
+
+export type GitHubDeviceAuthPoll =
+  | { status: "pending"; interval?: number }
+  | { status: "expired" }
+  | { status: "denied" }
+  | { status: "authorized"; auth: NonNullable<CloudAuthStatus> };
 
 export type ExtensionResponse<T = unknown> = {
   ok: boolean;

@@ -1,5 +1,5 @@
-import type { AppSnapshot, DeepSeekEnhanceResult, ExtensionRequest, ExtensionResponse, GraveyardState, RecallResult, RecallSynthesisResult, Settings, TabInfoCard } from "@/lib/types";
-import { createDemoState, createSnapshot, isExtensionRuntime, recallTabs } from "@/lib/memory";
+import type { AppSnapshot, CloudAuthStatus, DeepSeekEnhanceResult, ExtensionRequest, ExtensionResponse, GitHubDeviceAuthPoll, GitHubDeviceAuthStart, GraveyardState, RecallResult, RecallSynthesisResult, Settings, TabInfoCard } from "@/lib/types";
+import { createSnapshot, emptyState, isExtensionRuntime, recallTabs } from "@/lib/memory";
 
 export async function sendMessage<T>(request: ExtensionRequest): Promise<T> {
   if (!isExtensionRuntime()) return mockResponse<T>(request);
@@ -88,10 +88,6 @@ export function clearData() {
   return sendMessage<AppSnapshot>({ type: "clearData" });
 }
 
-export function seedDemo() {
-  return sendMessage<AppSnapshot>({ type: "seedDemo" });
-}
-
 export function importHistory() {
   return sendMessage<AppSnapshot>({ type: "importHistory" });
 }
@@ -104,12 +100,32 @@ export function enhanceWithDeepSeek() {
   return sendMessage<DeepSeekEnhanceResult>({ type: "enhanceWithDeepSeek" });
 }
 
+export function getCloudAuthStatus() {
+  return sendMessage<CloudAuthStatus>({ type: "getCloudAuthStatus" });
+}
+
+export function startGitHubAuth() {
+  return sendMessage<GitHubDeviceAuthStart>({ type: "startGitHubAuth" });
+}
+
+export function pollGitHubAuth(deviceCode: string) {
+  return sendMessage<GitHubDeviceAuthPoll>({ type: "pollGitHubAuth", deviceCode });
+}
+
+export function clearCloudAuth() {
+  return sendMessage<void>({ type: "clearCloudAuth" });
+}
+
 export function openDashboard() {
   return sendMessage<void>({ type: "openDashboard" });
 }
 
 async function mockResponse<T>(request: ExtensionRequest): Promise<T> {
-  const state = createDemoState();
+  const state = emptyState();
   if (request.type === "recall") return recallTabs(state.tabs, request.query, request.filters) as T;
+  if (request.type === "getCloudAuthStatus") return null as T;
+  if (request.type === "startGitHubAuth") throw new Error("GitHub auth must be started from the installed Chrome extension, not the Vite preview page.");
+  if (request.type === "pollGitHubAuth") return { status: "pending" } as T;
+  if (request.type === "clearCloudAuth") return undefined as T;
   return createSnapshot(state) as T;
 }
