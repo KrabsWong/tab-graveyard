@@ -137,6 +137,7 @@ export type GraveyardState = {
   tabs: TabMemory[];
   sessions: SessionMemory[];
   settings: Settings;
+  deletedUrls: string[];
   lastUndo?: UndoArchive;
   archivePreview?: ArchivePreview;
   rules: UserRule[];

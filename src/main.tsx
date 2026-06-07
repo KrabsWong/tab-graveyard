@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, BarChart3, Bell, CheckCircle2, ChevronDown, Copy, Database, Download, Edit3, Eraser, Eye, EyeOff, FileUp, Ghost, Github, History, Layers, Link2, Loader2, MousePointerClick, PieChart, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, TrendingUp, Users } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
-import { archiveGhosts, archiveTab, cancelArchivePreview, clearCloudAuth, clearData, confirmArchivePreview, exportData, getCloudAuthStatus, getSnapshot, importData, importHistory, openDashboard, pollGitHubAuth, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, startGitHubAuth, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
+import { archiveGhosts, archiveTab, cancelArchivePreview, clearCloudAuth, clearData, confirmArchivePreview, deleteTab, exportData, getCloudAuthStatus, getSnapshot, importData, importHistory, openDashboard, pollGitHubAuth, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, startGitHubAuth, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
 import type { AppSnapshot, BrowseGroupMode, CloudAuthStatus, ContentType, GitHubDeviceAuthStart, LanguageMode, RecallFilters, RecallResult, RecallSynthesisResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -55,6 +55,7 @@ const messages = {
     searchPlaceholder: "Describe what you remember: time, source, color, topic...",
     search: "Search",
     close: "Close",
+    cancel: "Cancel",
     popupSearchPlaceholder: "Describe what you remember...",
     popupRecallTop: "Recall Top 10",
     popupGhostTop: "Ghost Top 10",
@@ -78,6 +79,14 @@ const messages = {
     searchPendingTitle: "Searching memory",
     searchPendingDescription: "Matching local memory first, then applying AI recall when enabled.",
     actionComplete: "Complete",
+    deleteMemory: "Delete",
+    deleteThisMemory: "Delete this saved link",
+    deleteMemoryTitle: "Delete saved link?",
+    deleteMemoryDescription: "This permanently removes the saved link from Tab Graveyard and prevents this exact URL from being recorded again automatically. It does not close any open browser tab.",
+    deleteMemoryConfirm: "Delete permanently",
+    deletingMemory: "Deleting...",
+    deleteMemoryDone: "Link deleted",
+    deleteMemoryFailed: "Delete failed",
     retry: "Retry",
     saving: "Saving...",
     exporting: "Exporting...",
@@ -354,6 +363,7 @@ const messages = {
     searchPlaceholder: "描述你记得的：时间、来源、颜色、主题...",
     search: "搜索",
     close: "关闭",
+    cancel: "取消",
     popupSearchPlaceholder: "描述你记得的内容...",
     popupRecallTop: "找回 Top 10",
     popupGhostTop: "幽灵标签 Top 10",
@@ -377,6 +387,14 @@ const messages = {
     searchPendingTitle: "正在搜索记忆",
     searchPendingDescription: "先匹配本地记忆，启用 AI 时再进行意图找回。",
     actionComplete: "已完成",
+    deleteMemory: "删除",
+    deleteThisMemory: "删除这条记录",
+    deleteMemoryTitle: "删除保存的链接？",
+    deleteMemoryDescription: "这会从 Tab Graveyard 永久移除这条保存的链接，并阻止这个精确 URL 再次被自动记录。它不会关闭任何已打开的浏览器标签页。",
+    deleteMemoryConfirm: "永久删除",
+    deletingMemory: "删除中...",
+    deleteMemoryDone: "链接记录已删除",
+    deleteMemoryFailed: "删除失败",
     retry: "重试",
     saving: "正在保存...",
     exporting: "正在导出...",
@@ -1883,6 +1901,7 @@ function AnalyticsDrilldownRow({ tab, refresh, isGhost }: { tab: TabMemory; refr
           >
             <Copy className="h-4 w-4" />
           </AsyncButton>
+          <DeleteMemoryButton tab={tab} refresh={refresh} iconOnly className="h-8 w-8" />
         </div>
       </div>
       <p className="mt-2 break-words text-xs leading-5 text-muted-foreground">{tab.card.summary}</p>
@@ -2364,6 +2383,95 @@ function AsyncButton({
         </>
       ) : children}
     </Button>
+  );
+}
+
+function DeleteMemoryButton({
+  tab,
+  refresh,
+  compact = false,
+  iconOnly = false,
+  className
+}: {
+  tab: TabMemory | RecallResult;
+  refresh: () => Promise<void>;
+  compact?: boolean;
+  iconOnly?: boolean;
+  className?: string;
+}) {
+  const { t } = useI18n();
+  const notify = useToast();
+  const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const triggerIconOnly = iconOnly || compact;
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (deleting) return;
+    setOpen(nextOpen);
+    if (!nextOpen) setError(null);
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteTab(tab.id);
+      setOpen(false);
+      notify(t.deleteMemoryDone);
+      await refresh();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t.deleteMemoryFailed;
+      setError(message);
+      notify(t.deleteMemoryFailed);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          variant={compact ? "ghost" : "outline"}
+          size={triggerIconOnly ? "icon" : "sm"}
+          className={cn(
+            triggerIconOnly ? "h-8 w-8" : "h-7 px-2 text-xs",
+            compact ? "h-6 w-6" : undefined,
+            "text-destructive hover:text-destructive",
+            className
+          )}
+          title={t.deleteThisMemory}
+          aria-label={t.deleteThisMemory}
+        >
+          <Trash2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+          {triggerIconOnly ? null : t.deleteMemory}
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t.deleteMemoryTitle}</DialogTitle>
+          <DialogDescription>{t.deleteMemoryDescription}</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3">
+          <div className="min-w-0 rounded-md border bg-muted/30 p-3 text-sm">
+            <p className="break-words font-medium leading-5">{tab.title}</p>
+            <p className="mt-1 break-all text-xs text-muted-foreground">{tab.url}</p>
+          </div>
+          {error ? <StatusCallout variant="error" title={t.deleteMemoryFailed} description={error} action={<Button variant="outline" size="sm" onClick={() => setError(null)}>{t.close}</Button>} /> : null}
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" disabled={deleting} onClick={() => handleOpenChange(false)}>
+              {t.cancel}
+            </Button>
+            <AsyncButton type="button" variant="destructive" busy={deleting} busyLabel={t.deletingMemory} onClick={handleDelete}>
+              <Trash2 className="h-4 w-4" />
+              {t.deleteMemoryConfirm}
+            </AsyncButton>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -3697,6 +3805,7 @@ function formatEventType(type: string) {
     tab_recorded: "开启记录",
     tab_activated: "切换激活",
     tab_closed: "关闭标签",
+    tab_deleted: "删除记录",
     result_opened: "重新打开",
     archive_confirm: "归档确认",
     archive_undo: "撤销归档",
@@ -3891,6 +4000,7 @@ function MemoryResultRow({ tab, refresh, reason, reasonVariant, showStatusBadge,
             {showStatusBadge ? <Badge variant={tab.archived || isGhost ? "default" : "outline"}>{t.status}: {statusLabel}</Badge> : null}
             <Badge variant="outline" title={importance.description}>{t.importance}: {importance.label}</Badge>
             <EditCardButton tab={tab} refresh={refresh} compact />
+            <DeleteMemoryButton tab={tab} refresh={refresh} compact />
             {!tab.archived && tab.card.importance === "safe" ? (
               <AsyncButton
                 variant="secondary"

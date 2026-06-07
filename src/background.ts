@@ -14,6 +14,7 @@ import {
   isGhostTab,
   isVisibleTab,
   mergeTab,
+  normalizeDeletedUrl,
   normalizeState,
   recallTabs,
   setState,
@@ -173,7 +174,7 @@ async function handleMessage(request: ExtensionRequest) {
       await restoreSession(request.sessionId);
       return refreshSessionsSnapshot();
     case "deleteTab":
-      return mutate((state) => addEvent({ ...state, tabs: state.tabs.filter((tab) => tab.id !== request.tabId) }, "tab_deleted"));
+      return deleteTab(request.tabId);
     case "updateTabCard":
       return updateTabCard(request.tabId, request.card, request.saveRule);
     case "renameSession":
@@ -218,9 +219,9 @@ async function handleMessage(request: ExtensionRequest) {
     case "exportData":
       return getState();
     case "importData":
-      return mutate(() => addEvent(normalizeState(request.state), "data_imported"));
+      return mutate(() => addEvent(normalizeState(request.state), "data_imported"), { replaceDeletedUrls: true });
     case "clearData":
-      return mutate(() => addEvent(emptyState(), "data_deleted"));
+      return mutate(() => addEvent(emptyState(), "data_deleted"), { replaceDeletedUrls: true });
     case "importHistory":
       return importHistory();
     case "testDeepSeek":
@@ -311,16 +312,43 @@ async function pollGitHubAuth(deviceCode: string) {
   };
 }
 
-async function mutate(updater: (state: GraveyardState) => GraveyardState) {
+async function mutate(updater: (state: GraveyardState) => GraveyardState, options?: { replaceDeletedUrls?: boolean }) {
   const next = ensureSessions(updater(await getState()));
-  await setState(next);
-  return createSnapshot(next);
+  const persisted = await setState(next, options);
+  return createSnapshot(persisted ?? next);
 }
 
 async function refreshSessionsSnapshot() {
   const next = ensureSessions(await getState());
-  await setState(next);
-  return createSnapshot(next);
+  const persisted = await setState(next);
+  return createSnapshot(persisted ?? next);
+}
+
+function isDeletedUrl(state: GraveyardState, url: string) {
+  return state.deletedUrls.includes(normalizeDeletedUrl(url));
+}
+
+async function deleteTab(tabId: string) {
+  return mutate((state) => {
+    const tab = state.tabs.find((item) => item.id === tabId);
+    if (!tab) return state;
+    const deletedUrl = normalizeDeletedUrl(tab.url);
+    const deletedUrls = Array.from(new Set([...state.deletedUrls, deletedUrl])).slice(-1000);
+    const deletedTabIds = new Set(state.tabs.filter((item) => normalizeDeletedUrl(item.url) === deletedUrl).map((item) => item.id));
+    const lastUndoTabs = state.lastUndo?.tabs.filter((item) => !deletedTabIds.has(item.id) && normalizeDeletedUrl(item.url) !== deletedUrl);
+    const archivePreviewTabIds = state.archivePreview?.tabIds.filter((id) => !deletedTabIds.has(id));
+    return addEvent(
+      {
+        ...state,
+        tabs: state.tabs.filter((item) => normalizeDeletedUrl(item.url) !== deletedUrl),
+        deletedUrls,
+        lastUndo: lastUndoTabs?.length ? { ...state.lastUndo!, tabs: lastUndoTabs } : undefined,
+        archivePreview: archivePreviewTabIds?.length ? { ...state.archivePreview!, tabIds: archivePreviewTabIds } : undefined
+      },
+      "tab_deleted",
+      { count: deletedTabIds.size, domain: tab.domain, title: tab.title, url: tab.url }
+    );
+  });
 }
 
 async function recordOpenTabs() {
@@ -329,6 +357,7 @@ async function recordOpenTabs() {
   if (state.settings.recordingPaused) return;
   for (const tab of tabs) {
     if (!tab.url || tab.incognito || isBlacklisted(getDomain(tab.url), state.settings.blacklistDomains)) continue;
+    if (isDeletedUrl(state, tab.url)) continue;
     const memory = buildMemoryFromTab(tab, state);
     if (memory) state = mergeTab(state, memory);
   }
@@ -363,6 +392,7 @@ async function recordTab(tab: chrome.tabs.Tab, options: { activated?: boolean } 
   const state = await getState();
   if (state.settings.recordingPaused || !tab.url || tab.incognito) return;
   if (isBlacklisted(getDomain(tab.url), state.settings.blacklistDomains)) return;
+  if (isDeletedUrl(state, tab.url)) return;
   const existing = findExistingTab(state, tab);
   const memory = buildMemoryFromTab(tab, state, options.activated ? Date.now() : undefined, existing);
   if (!memory) return;
@@ -808,6 +838,7 @@ async function recordContentSignal(tabId: number | undefined, url: string, signa
   const now = Date.now();
   const domain = getDomain(url);
   if (isBlacklisted(domain, state.settings.blacklistDomains)) return createSnapshot(state);
+  if (isDeletedUrl(state, url)) return createSnapshot(state);
   const next = addEvent(
     {
       ...state,
@@ -840,6 +871,7 @@ async function recordPageMetadata(tabId: number | undefined, url: string, metada
   const state = await getState();
   const domain = getDomain(url);
   if (isBlacklisted(domain, state.settings.blacklistDomains)) return createSnapshot(state);
+  if (isDeletedUrl(state, url)) return createSnapshot(state);
   const next = ensureSessions({
     ...state,
     tabs: state.tabs.map((tab) => {
@@ -932,6 +964,7 @@ async function importHistory() {
   let state = await getState();
   for (const item of historyItems) {
     if (!item.url || shouldSkipUrl(item.url) || isBlacklisted(getDomain(item.url), state.settings.blacklistDomains)) continue;
+    if (isDeletedUrl(state, item.url)) continue;
     const title = item.title || getDomain(item.url);
     const openedAt = item.lastVisitTime ?? now;
     const memory: TabMemory = {
@@ -973,6 +1006,10 @@ async function maybeResurface(tab: chrome.tabs.Tab) {
   const currentDomain = getDomain(url);
   if (isBlacklisted(currentDomain, state.settings.blacklistDomains)) {
     logResurface("skip:blacklisted", { tabId: tab.id, url });
+    return;
+  }
+  if (isDeletedUrl(state, url)) {
+    logResurface("skip:deleted-url", { tabId: tab.id, url });
     return;
   }
   logResurface("evaluate", {

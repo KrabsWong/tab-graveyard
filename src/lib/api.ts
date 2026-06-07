@@ -48,6 +48,10 @@ export function restoreSession(sessionId: string) {
   return sendMessage<AppSnapshot>({ type: "restoreSession", sessionId });
 }
 
+export function deleteTab(tabId: string) {
+  return sendMessage<AppSnapshot>({ type: "deleteTab", tabId });
+}
+
 export function updateTabCard(tabId: string, card: Partial<TabInfoCard>, saveRule?: boolean) {
   return sendMessage<AppSnapshot>({ type: "updateTabCard", tabId, card, saveRule });
 }

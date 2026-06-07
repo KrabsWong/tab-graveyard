@@ -57,6 +57,7 @@ export const emptyState = (): GraveyardState => ({
   tabs: [],
   sessions: [],
   settings: defaultSettings,
+  deletedUrls: [],
   rules: [],
   events: []
 });
@@ -71,16 +72,27 @@ export async function getState(): Promise<GraveyardState> {
   return normalizeState(data[STORAGE_KEY]);
 }
 
-export async function setState(state: GraveyardState) {
-  if (!isExtensionRuntime()) return;
-  await chrome.storage.local.set({ [STORAGE_KEY]: normalizeState(state) });
+export async function setState(state: GraveyardState, options: { replaceDeletedUrls?: boolean } = {}) {
+  if (!isExtensionRuntime()) return undefined;
+  const normalized = normalizeState(state);
+  const next = options.replaceDeletedUrls ? normalized : await mergeExistingDeletedUrls(normalized);
+  await chrome.storage.local.set({ [STORAGE_KEY]: next });
+  return next;
 }
 
 export function normalizeState(raw: unknown): GraveyardState {
   const base = emptyState();
   if (!raw || typeof raw !== "object") return base;
   const candidate = raw as Partial<GraveyardState>;
-  const tabs = Array.isArray(candidate.tabs) ? candidate.tabs.map(normalizeTabMemory).filter((tab) => !shouldSkipUrl(tab.url)) : [];
+  const deletedUrls = Array.isArray(candidate.deletedUrls)
+    ? Array.from(new Set(candidate.deletedUrls.map(normalizeDeletedUrl).filter(Boolean))).slice(-1000)
+    : [];
+  const deletedUrlSet = new Set(deletedUrls);
+  const tabs = Array.isArray(candidate.tabs)
+    ? candidate.tabs
+        .map(normalizeTabMemory)
+        .filter((tab) => !shouldSkipUrl(tab.url) && !deletedUrlSet.has(normalizeDeletedUrl(tab.url)))
+    : [];
   const settings = {
     ...defaultSettings,
     ...(candidate.settings ?? {}),
@@ -97,6 +109,7 @@ export function normalizeState(raw: unknown): GraveyardState {
     tabs,
     sessions: Array.isArray(candidate.sessions) ? candidate.sessions : [],
     settings,
+    deletedUrls,
     lastUndo: candidate.lastUndo,
     archivePreview: candidate.archivePreview,
     rules: Array.isArray(candidate.rules) ? candidate.rules : [],
@@ -461,6 +474,27 @@ export function shouldSkipUrl(url: string) {
   const lower = url.toLowerCase();
   if (/^(chrome|edge|brave|opera|vivaldi|arc|chrome-extension):/.test(lower)) return true;
   return isTransientAuthUrl(url);
+}
+
+export function normalizeDeletedUrl(url: string) {
+  try {
+    return new URL(url).toString();
+  } catch {
+    return url.trim();
+  }
+}
+
+async function mergeExistingDeletedUrls(state: GraveyardState) {
+  const data = await chrome.storage.local.get(STORAGE_KEY);
+  const current = normalizeState(data[STORAGE_KEY]);
+  const deletedUrls = Array.from(new Set([...current.deletedUrls, ...state.deletedUrls])).slice(-1000);
+  if (!deletedUrls.length) return state;
+  const deletedUrlSet = new Set(deletedUrls);
+  return {
+    ...state,
+    deletedUrls,
+    tabs: state.tabs.filter((tab) => !deletedUrlSet.has(normalizeDeletedUrl(tab.url)))
+  };
 }
 
 function inferContentType(url: string): ContentType {
