@@ -115,3 +115,7 @@ The main extension surfaces are:
 This repository implements the local Chrome extension prototype described in `docs/Tab-Graveyard-PRD-Final.md`.
 
 GitHub identity pairing is connected to the deployed Tab Graveyard Server. Full tab-memory sync, billing, and public leaderboard backends are not enabled yet. Related UI surfaces remain local-first unless explicitly connected to the server.
+
+## License
+
+Tab Graveyard is licensed under the GNU Affero General Public License v3.0 only (`AGPL-3.0-only`). See `LICENSE` for details.
