@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
-import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, BarChart3, Bell, CheckCircle2, ChevronDown, Copy, Database, Download, Edit3, Eraser, Eye, EyeOff, FileUp, Ghost, Github, History, Layers, Link2, Loader2, MousePointerClick, PieChart, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, TrendingUp, Users } from "lucide-react";
+import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, BarChart3, Bell, CheckCircle2, ChevronDown, Copy, Database, Download, Edit3, Eraser, Eye, EyeOff, FileUp, Ghost, Github, History, Layers, Lightbulb, Link2, Loader2, MousePointerClick, PieChart, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, TrendingUp, Users } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
 import { archiveGhosts, archiveTab, cancelArchivePreview, clearCloudAuth, clearData, confirmArchivePreview, deleteTab, exportData, getCloudAuthStatus, getSnapshot, importData, importHistory, openDashboard, pollGitHubAuth, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, startGitHubAuth, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
@@ -161,7 +161,7 @@ const messages = {
     graveyard: "Graveyard",
     sessions: "Sessions",
     facets: "Facets",
-    facetsDescription: "Filters apply to the visible results. Entry source is inferred locally from the URL or referrer-like signals.",
+    facetsDescription: "Filter current results. Source is inferred locally.",
     time: "Time",
     source: "Entry source",
     type: "Type",
@@ -172,6 +172,15 @@ const messages = {
     entity: "Entity",
     archivedOnly: "Archived only",
     noResults: "Nothing found. Try fewer cues, or browse Sessions.",
+    guidanceTipLabel: "Tip",
+    recallTipTitle: "Start with what you remember",
+    recallTipDescription: "Search accepts rough cues: a topic, a site, a time window, a color, or a person/company name from the page.",
+    ghostTipTitle: "Ghost Tabs are archive candidates",
+    ghostTipDescription: "These open tabs have been inactive long enough to look safe. Archiving keeps the memory searchable and lets you restore the page later.",
+    graveyardTipTitle: "Archived memory is still recoverable",
+    graveyardTipDescription: "Use this view to browse older saved pages by timeline, source, entity, or session, then restore the ones that matter.",
+    sessionsTipTitle: "Sessions group related browsing",
+    sessionsTipDescription: "A session is a conservative cluster of tabs that were close in time, topic, source, or entity. Restore the group when you want the whole context back.",
     page: "Page",
     status: "Status",
     importance: "Importance",
@@ -466,7 +475,7 @@ const messages = {
     graveyard: "归档库",
     sessions: "会话",
     facets: "筛选",
-    facetsDescription: "筛选会直接作用于当前结果。入口来源是根据 URL 或类似来源信号在本地推断的。",
+    facetsDescription: "筛选当前结果，来源由本地推断。",
     time: "时间",
     source: "入口来源",
     type: "类型",
@@ -477,6 +486,15 @@ const messages = {
     entity: "实体",
     archivedOnly: "仅归档",
     noResults: "没找到。试试减少一个线索，或从会话里浏览。",
+    guidanceTipLabel: "提示",
+    recallTipTitle: "从你记得的线索开始",
+    recallTipDescription: "搜索可以输入粗略线索：主题、网站、时间范围、颜色，或页面里出现过的人名/公司名。",
+    ghostTipTitle: "幽灵标签是归档候选",
+    ghostTipDescription: "这些仍打开的标签已经足够久没有活跃，看起来可以安全归档。归档后记忆仍可搜索，也可以之后恢复页面。",
+    graveyardTipTitle: "归档记忆仍然可以找回",
+    graveyardTipDescription: "这里适合按时间线、来源、实体或会话浏览旧页面，需要时再恢复重要内容。",
+    sessionsTipTitle: "会话会聚合相关浏览上下文",
+    sessionsTipDescription: "会话是基于时间、主题、来源或实体接近度形成的保守分组。需要回到完整现场时，可以整组恢复。",
     page: "页面",
     status: "状态",
     importance: "重要度",
@@ -1378,6 +1396,7 @@ function Dashboard({
         <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(150px,210px)_minmax(0,1fr)]">
           <Facets snapshot={snapshot} filters={filters} setFilters={setFilters} />
           <div className="grid auto-rows-min gap-3">
+            <GuidanceTip title={t.recallTipTitle} description={t.recallTipDescription} />
             <RecallSynthesis query={query} results={scopedRecallResults} snapshot={snapshot} isSearching={isSearching} />
             <ResultGrid results={scopedRecallResults} fallbackTabs={[]} refresh={refresh} />
           </div>
@@ -2610,6 +2629,22 @@ function RecallSynthesis({ query, results, snapshot, isSearching }: { query: str
   );
 }
 
+function GuidanceTip({ title, description, className }: { title: string; description: string; className?: string }) {
+  const { t } = useI18n();
+  return (
+    <div className={cn("flex min-w-0 items-start gap-3 rounded-md border bg-muted/25 px-3 py-2.5 text-sm", className)} role="note">
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-background text-primary">
+        <Lightbulb className="h-4 w-4" aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">{t.guidanceTipLabel}</p>
+        <p className="mt-0.5 font-medium">{title}</p>
+        <p className="mt-1 leading-5 text-muted-foreground">{description}</p>
+      </div>
+    </div>
+  );
+}
+
 function RecallSummaryCard({ synthesis }: { synthesis: RecallSynthesisResult }) {
   const { t } = useI18n();
   return (
@@ -2699,6 +2734,7 @@ function GhostTabsPanel({ snapshot, tabs, refresh }: { snapshot: AppSnapshot; ta
           <Ghost className="h-4 w-4" /> {snapshot.settings.archiveTrustStage === "manual" ? interpolate(t.archiveGhostTabs, { count: snapshot.ghostTabs.length }) : t.previewArchive}
         </AsyncButton>
       </div>
+      <GuidanceTip title={t.ghostTipTitle} description={t.ghostTipDescription} />
       {archiveAction === "preview" ? <PendingBlock title={t.previewingArchive} description={t.ghostTabsDescription} /> : null}
       {archivePreview ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
@@ -2780,6 +2816,7 @@ function GraveyardBrowser({ tabs, refresh }: { tabs: TabMemory[]; refresh: () =>
   const groups = useMemo(() => groupTabs(tabs, mode, language), [tabs, mode, language]);
   return (
     <div className="grid gap-4">
+      <GuidanceTip title={t.graveyardTipTitle} description={t.graveyardTipDescription} />
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium">{t.browseBy}</span>
         {[
@@ -2816,6 +2853,7 @@ function SessionManager({ snapshot, sessions, visibleTabIds, refresh }: { snapsh
   const ghostIds = useMemo(() => new Set(snapshot.ghostTabs.map((tab) => tab.id)), [snapshot.ghostTabs]);
   return (
     <div className="grid gap-2">
+      <GuidanceTip title={t.sessionsTipTitle} description={t.sessionsTipDescription} />
       {sessions.map((session) => {
         const sessionTabs = snapshot.tabs
           .filter((tab) => session.tabIds.includes(tab.id) && (!visibleTabIds || visibleTabIds.has(tab.id)))
@@ -3006,14 +3044,14 @@ function Facets({ snapshot, filters, setFilters }: { snapshot: AppSnapshot; filt
   const clearFilter = (key: string) => setFilters((prev) => ({ ...prev, [key]: key === "archivedOnly" ? false : "all" }));
   return (
     <Card className="h-fit min-w-0">
-      <CardHeader>
+      <CardHeader className="p-4 pb-2">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle>{t.facets}</CardTitle>
+          <CardTitle className="text-sm">{t.facets}</CardTitle>
           <Button variant="ghost" size="sm" className="h-7 px-2" disabled={!activeFilters.length} onClick={resetFilters}>{t.resetFilters}</Button>
         </div>
-        <CardDescription>{activeFilters.length ? t.activeFilters : t.facetsDescription}</CardDescription>
+        <CardDescription className="text-xs leading-5">{activeFilters.length ? t.activeFilters : t.facetsDescription}</CardDescription>
       </CardHeader>
-      <CardContent className="grid min-w-0 gap-3">
+      <CardContent className="grid min-w-0 gap-2 p-4 pt-1">
         {activeFilters.length ? (
           <div className="flex flex-wrap gap-1">
             {activeFilters.map(([key, value]) => (
@@ -3024,23 +3062,27 @@ function Facets({ snapshot, filters, setFilters }: { snapshot: AppSnapshot; filt
             ))}
           </div>
         ) : null}
-        <SelectRow label={t.time} value={filters.time ?? "all"} options={enumOptions("time", ["all", "today", "yesterday", "week", "last-week"], language)} onChange={(time) => setFilters((prev) => ({ ...prev, time: time as RecallFilters["time"] }))} />
-        <SelectRow label={t.source} value={filters.source ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("source", ["twitter", "slack", "email", "search", "direct", "bookmark"], language)]} onChange={(source) => setFilters((prev) => ({ ...prev, source: source as RecallFilters["source"] }))} />
-        <SelectRow label={t.type} value={filters.contentType ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("contentType", ["article", "video", "pdf", "tweet", "repo", "doc", "image", "saas"], language)]} onChange={(contentType) => setFilters((prev) => ({ ...prev, contentType: contentType as RecallFilters["contentType"] }))} />
+        <div className="flex min-w-0 flex-wrap gap-1.5">
+          <FacetSelectRow label={t.time} value={filters.time ?? "all"} options={enumOptions("time", ["all", "today", "yesterday", "week", "last-week"], language)} onChange={(time) => setFilters((prev) => ({ ...prev, time: time as RecallFilters["time"] }))} />
+          <FacetSelectRow label={t.source} value={filters.source ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("source", ["twitter", "slack", "email", "search", "direct", "bookmark"], language)]} onChange={(source) => setFilters((prev) => ({ ...prev, source: source as RecallFilters["source"] }))} />
+          <FacetSelectRow label={t.type} value={filters.contentType ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("contentType", ["article", "video", "pdf", "tweet", "repo", "doc", "image", "saas"], language)]} onChange={(contentType) => setFilters((prev) => ({ ...prev, contentType: contentType as RecallFilters["contentType"] }))} />
+        </div>
         {showMore ? (
-          <>
-            <SelectRow label={t.importance} value={filters.importance ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("importance", ["must", "should", "maybe", "safe"], language)]} onChange={(importance) => setFilters((prev) => ({ ...prev, importance: importance as RecallFilters["importance"] }))} />
-            <SelectRow label={t.readingStatus} value={filters.readingStatus ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("readingStatus", ["fully-read", "skimmed", "bounced"], language)]} onChange={(readingStatus) => setFilters((prev) => ({ ...prev, readingStatus: readingStatus as RecallFilters["readingStatus"] }))} />
-            <SelectRow label={t.color} value={filters.color ?? "all"} options={["all", "blue", "black", "slate", "orange", "white", "purple"]} onChange={(color) => setFilters((prev) => ({ ...prev, color }))} />
-            <SelectRow label={t.topic} value={filters.topic ?? "all"} options={["all", ...snapshotTopics]} onChange={(topic) => setFilters((prev) => ({ ...prev, topic }))} />
-            <SelectRow label={t.entity} value={filters.entity ?? "all"} options={["all", ...snapshotEntities]} onChange={(entity) => setFilters((prev) => ({ ...prev, entity }))} />
-          </>
+          <div className="flex min-w-0 flex-wrap gap-1.5">
+            <FacetSelectRow label={t.importance} value={filters.importance ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("importance", ["must", "should", "maybe", "safe"], language)]} onChange={(importance) => setFilters((prev) => ({ ...prev, importance: importance as RecallFilters["importance"] }))} />
+            <FacetSelectRow label={t.readingStatus} value={filters.readingStatus ?? "all"} options={[{ value: "all", label: t.all }, ...enumOptions("readingStatus", ["fully-read", "skimmed", "bounced"], language)]} onChange={(readingStatus) => setFilters((prev) => ({ ...prev, readingStatus: readingStatus as RecallFilters["readingStatus"] }))} />
+            <FacetSelectRow label={t.color} value={filters.color ?? "all"} options={["all", "blue", "black", "slate", "orange", "white", "purple"]} onChange={(color) => setFilters((prev) => ({ ...prev, color }))} />
+            <FacetSelectRow label={t.topic} value={filters.topic ?? "all"} options={["all", ...snapshotTopics]} onChange={(topic) => setFilters((prev) => ({ ...prev, topic }))} />
+            <FacetSelectRow label={t.entity} value={filters.entity ?? "all"} options={["all", ...snapshotEntities]} onChange={(entity) => setFilters((prev) => ({ ...prev, entity }))} />
+          </div>
         ) : null}
-        <Button variant="outline" size="sm" onClick={() => setShowMore((value) => !value)}>{showMore ? t.fewerFilters : t.moreFilters}</Button>
-        <label className="flex min-w-0 items-center justify-between gap-3 rounded-md border p-2 text-sm">
-          {t.archivedOnly}
-          <Switch checked={Boolean(filters.archivedOnly)} onCheckedChange={(archivedOnly) => setFilters((prev) => ({ ...prev, archivedOnly }))} />
-        </label>
+        <div className="flex min-w-0 flex-wrap items-center gap-2 pt-1">
+          <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setShowMore((value) => !value)}>{showMore ? t.fewerFilters : t.moreFilters}</Button>
+          <label className="flex min-w-0 items-center gap-2 rounded-md border border-border/70 bg-background/30 px-2.5 py-1.5 text-xs text-muted-foreground">
+            {t.archivedOnly}
+            <Switch checked={Boolean(filters.archivedOnly)} onCheckedChange={(archivedOnly) => setFilters((prev) => ({ ...prev, archivedOnly }))} />
+          </label>
+        </div>
       </CardContent>
     </Card>
   );
@@ -4468,6 +4510,35 @@ function SelectRow({
       </Select>
       {showOptionDescription && selectedOption?.description ? <span className="text-xs text-muted-foreground">{selectedOption.description}</span> : null}
     </label>
+  );
+}
+
+function FacetSelectRow({
+  label,
+  value,
+  options,
+  onChange
+}: {
+  label: string;
+  value: string;
+  options: Array<string | { value: string; label: string; description?: string }>;
+  onChange: (value: string) => void;
+}) {
+  const normalizedOptions = options.map((option) => (typeof option === "string" ? { value: option, label: option } : option));
+  return (
+    <div className="grid min-w-[150px] max-w-[190px] flex-[1_1_150px] grid-cols-[64px_minmax(0,1fr)] items-center gap-1.5 rounded-md border border-border/70 bg-background/25 px-2 py-1.5">
+      <span className="min-w-0 text-xs font-medium leading-4 text-muted-foreground" title={label}>{label}</span>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger className="h-7 border-0 bg-transparent px-0 text-sm shadow-none ring-offset-0 focus:ring-0 focus:ring-offset-0 [&>svg]:h-3.5 [&>svg]:w-3.5 [&>span]:text-right">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {normalizedOptions.map((item) => (
+            <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }
 
