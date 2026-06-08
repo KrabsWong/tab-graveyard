@@ -123,7 +123,6 @@ export type Settings = {
   archivePreannounce: boolean;
   leaderboardEnabled: boolean;
   blacklistDomains: string[];
-  onboardingComplete: boolean;
 };
 
 export type DeepSeekSettings = {

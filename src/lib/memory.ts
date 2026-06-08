@@ -49,8 +49,7 @@ export const defaultSettings: Settings = {
     "bitwarden",
     "localhost",
     "127.0.0.1"
-  ],
-  onboardingComplete: false
+  ]
 };
 
 export const emptyState = (): GraveyardState => ({
@@ -93,9 +92,15 @@ export function normalizeState(raw: unknown): GraveyardState {
         .map(normalizeTabMemory)
         .filter((tab) => !shouldSkipUrl(tab.url) && !deletedUrlSet.has(normalizeDeletedUrl(tab.url)))
     : [];
+  const candidateSettings = (candidate.settings ?? {}) as Partial<Settings>;
+  const knownSettings = Object.fromEntries(
+    (Object.keys(defaultSettings) as Array<keyof Settings>)
+      .filter((key) => candidateSettings[key] !== undefined)
+      .map((key) => [key, candidateSettings[key]])
+  ) as Partial<Settings>;
   const settings = {
     ...defaultSettings,
-    ...(candidate.settings ?? {}),
+    ...knownSettings,
     deepSeek: {
       ...defaultSettings.deepSeek,
       ...(candidate.settings?.deepSeek ?? {})

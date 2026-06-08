@@ -235,8 +235,6 @@ const messages = {
     clearCloudAuth: "Disconnect this device",
     memoryMatch: "memory match",
     browserMemoryLocal: "Your browser memory stays local by default.",
-    firstRun: "First Run",
-    firstRunDescription: "Choose how Tab Graveyard should start building memory.",
     generalSettings: "General",
     generalSettingsDescription: "Language and appearance defaults.",
     archiveSettingsDescription: "Control when inactive tabs become Ghost Tabs and how much confirmation archive actions require.",
@@ -244,7 +242,6 @@ const messages = {
     rulesSettingsDescription: "Keep private, noisy, or irrelevant domains out of Tab Memory.",
     dataSettingsDescription: "Export, import, inspect local events, or clear local memory.",
     importHistory: "Import history",
-    startEmpty: "Start empty",
     privacyRecording: "Privacy & Recording",
     privacyDescription: "Local recording controls and privacy boundaries.",
     pauseRecording: "Pause recording",
@@ -543,8 +540,6 @@ const messages = {
     clearCloudAuth: "断开此设备",
     memoryMatch: "记忆匹配",
     browserMemoryLocal: "你的浏览记忆默认只保存在本地。",
-    firstRun: "首次启动",
-    firstRunDescription: "选择 Tab Graveyard 如何开始建立记忆。",
     generalSettings: "通用设置",
     generalSettingsDescription: "界面语言与主题外观默认值。",
     archiveSettingsDescription: "控制不活跃标签何时进入幽灵状态，以及归档动作需要多少确认。",
@@ -552,7 +547,6 @@ const messages = {
     rulesSettingsDescription: "把私密、嘈杂或无关的域名排除在 Tab Memory 之外。",
     dataSettingsDescription: "导出、导入、查看本地事件，或清空本地记忆。",
     importHistory: "导入历史",
-    startEmpty: "从零开始",
     privacyRecording: "隐私与记录",
     privacyDescription: "本地记录控制与隐私边界。",
     pauseRecording: "暂停记录",
@@ -3275,8 +3269,6 @@ function SettingsPage({ snapshot, refresh, cloudAuthStatus, onCloudAuthStatusCha
         </div>
       </header>
 
-      {!snapshot.settings.onboardingComplete ? <Onboarding refresh={refresh} /> : null}
-
       <Tabs
         value={settingsTab}
         onValueChange={(value) => {
@@ -3814,53 +3806,6 @@ function formatEventType(type: string) {
     url_copied: "复制链接"
   };
   return labels[type] ?? type;
-}
-
-function Onboarding({ refresh }: { refresh: () => Promise<void> }) {
-  const { t } = useI18n();
-  const [action, setAction] = useState<"history" | "empty" | null>(null);
-  return (
-    <Card className="border-primary/30">
-      <CardHeader>
-        <CardTitle>{t.firstRun}</CardTitle>
-        <CardDescription>{t.firstRunDescription}</CardDescription>
-      </CardHeader>
-      <CardContent className="grid gap-3 md:grid-cols-2">
-        <AsyncButton
-          busy={action === "history"}
-          busyLabel={t.importing}
-          onClick={async () => {
-            setAction("history");
-            try {
-              await saveSettings({ aiMode: "local-first", strictPrivacy: false, onboardingComplete: true });
-              await importHistory();
-              await refresh();
-            } finally {
-              setAction(null);
-            }
-          }}
-        >
-          {t.importHistory}
-        </AsyncButton>
-        <AsyncButton
-          variant="outline"
-          busy={action === "empty"}
-          busyLabel={t.saving}
-          onClick={async () => {
-            setAction("empty");
-            try {
-              await saveSettings({ aiMode: "local-only", strictPrivacy: true, onboardingComplete: true });
-              await refresh();
-            } finally {
-              setAction(null);
-            }
-          }}
-        >
-          {t.startEmpty}
-        </AsyncButton>
-      </CardContent>
-    </Card>
-  );
 }
 
 type ReasonVariant = "default" | "ghost" | "recall";
