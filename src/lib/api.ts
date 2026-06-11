@@ -1,4 +1,4 @@
-import type { AppSnapshot, CloudAuthStatus, DeepSeekEnhanceResult, ExtensionRequest, ExtensionResponse, GitHubDeviceAuthPoll, GitHubDeviceAuthStart, GraveyardState, RecallResult, RecallSynthesisResult, Settings, TabInfoCard } from "@/lib/types";
+import type { AppSnapshot, CloudAuthStatus, DailyDigestResponse, DeepSeekEnhanceResult, ExtensionRequest, ExtensionResponse, GitHubDeviceAuthPoll, GitHubDeviceAuthStart, GraveyardState, RecallResult, RecallSynthesisResult, Settings, TabInfoCard } from "@/lib/types";
 import { createSnapshot, emptyState, isExtensionRuntime, recallTabs } from "@/lib/memory";
 
 export async function sendMessage<T>(request: ExtensionRequest): Promise<T> {
@@ -76,6 +76,22 @@ export function summarizeRecall(query: string, tabIds?: string[], sessionId?: st
   return sendMessage<RecallSynthesisResult>({ type: "summarizeRecall", query, tabIds, sessionId });
 }
 
+export function getDailyDigest(mode: "auto" | "manual" = "auto", dateKey?: string) {
+  return sendMessage<DailyDigestResponse>({ type: "getDailyDigest", mode, dateKey });
+}
+
+export function ackDailyDigestTip(digestId: string) {
+  return sendMessage<DailyDigestResponse>({ type: "ackDailyDigestTip", digestId });
+}
+
+export function markDailyDigestViewed(digestId: string) {
+  return sendMessage<DailyDigestResponse>({ type: "markDailyDigestViewed", digestId });
+}
+
+export function dismissDailyDigestTip(digestId: string) {
+  return sendMessage<DailyDigestResponse>({ type: "dismissDailyDigestTip", digestId });
+}
+
 export function saveSettings(settings: Partial<Settings>) {
   return sendMessage<AppSnapshot>({ type: "saveSettings", settings });
 }
@@ -127,6 +143,20 @@ export function openDashboard() {
 async function mockResponse<T>(request: ExtensionRequest): Promise<T> {
   const state = emptyState();
   if (request.type === "recall") return recallTabs(state.tabs, request.query, request.filters) as T;
+  if (request.type === "getDailyDigest") return {
+    status: "idle",
+    targetDateKey: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    tabCount: 0,
+    history: [],
+    shouldNotify: false
+  } as T;
+  if (request.type === "ackDailyDigestTip" || request.type === "markDailyDigestViewed" || request.type === "dismissDailyDigestTip") return {
+    status: "idle",
+    targetDateKey: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    tabCount: 0,
+    history: [],
+    shouldNotify: false
+  } as T;
   if (request.type === "getCloudAuthStatus") return null as T;
   if (request.type === "startGitHubAuth") throw new Error("GitHub auth must be started from the installed Chrome extension, not the Vite preview page.");
   if (request.type === "pollGitHubAuth") return { status: "pending" } as T;

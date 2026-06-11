@@ -3,9 +3,9 @@ import ReactDOM from "react-dom/client";
 import { AlertCircle, Archive, ArrowLeft, ArrowUpRight, BarChart3, Bell, CheckCircle2, ChevronDown, Copy, Database, Download, Edit3, Eraser, Eye, EyeOff, FileUp, Ghost, Github, History, Layers, Lightbulb, Link2, Loader2, MousePointerClick, PieChart, RotateCcw, Search, Settings, ShieldCheck, SlidersHorizontal, Sparkles, Trash2, TrendingUp, Users } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import "./styles.css";
-import { archiveGhosts, archiveTab, cancelArchivePreview, clearCloudAuth, clearData, confirmArchivePreview, deleteTab, exportData, getCloudAuthStatus, getSnapshot, importData, importHistory, openDashboard, pollGitHubAuth, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, startGitHubAuth, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
+import { ackDailyDigestTip, archiveGhosts, archiveTab, cancelArchivePreview, clearCloudAuth, clearData, confirmArchivePreview, deleteTab, dismissDailyDigestTip, exportData, getCloudAuthStatus, getDailyDigest, getSnapshot, importData, importHistory, markDailyDigestViewed, openDashboard, pollGitHubAuth, previewArchive, recall, renameSession, restoreSession, restoreTab, saveSettings, startGitHubAuth, summarizeRecall, testDeepSeek, unarchiveTab, undoArchive, updateTabCard } from "@/lib/api";
 import { buildWhyTip, formatTime, groupTabs } from "@/lib/memory";
-import type { AppSnapshot, BrowseGroupMode, CloudAuthStatus, ContentType, GitHubDeviceAuthStart, LanguageMode, RecallFilters, RecallResult, RecallSynthesisResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
+import type { AppSnapshot, BrowseGroupMode, CloudAuthStatus, ContentType, DailyDigest, DailyDigestResponse, GitHubDeviceAuthStart, LanguageMode, RecallFilters, RecallResult, RecallSynthesisResult, Settings as SettingsType, TabInfoCard, TabMemory, ThemeMode } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,13 @@ type SettingsTab = "general" | "archive" | "resurface" | "privacy" | "ai" | "rul
 type ActiveGitHubDeviceAuth = GitHubDeviceAuthStart & {
   expiresAt: number;
   intervalMs: number;
+};
+type DailyDigestMenuAction = {
+  response: DailyDigestResponse | null;
+  loading: boolean;
+  historyCount: number;
+  onOpen: () => void;
+  onRegenerate: () => void;
 };
 
 const messages = {
@@ -71,6 +78,29 @@ const messages = {
     summaryScope: "Scope",
     summaryHighlights: "Key observations",
     summarySourceNote: "Based on tab metadata and behavior signals, not page-body content.",
+    dailyDigest: "Daily digest",
+    dailyDigestButton: "Daily digest",
+    dailyDigestGenerating: "Generating digest...",
+    dailyDigestReady: "Yesterday's digest is ready",
+    dailyDigestEmpty: "No activity from yesterday yet.",
+    dailyDigestTipTitle: "Yesterday's digest is ready",
+    dailyDigestTipDescription: "Review the themes, signals, suggestions, and reflection questions from yesterday's browsing.",
+    dailyDigestViewDetails: "View details",
+    dailyDigestDetails: "Daily Digest Details",
+    dailyDigestHistory: "Digest history",
+    dailyDigestNoHistory: "No saved digests yet.",
+    dailyDigestYesterday: "Yesterday",
+    dailyDigestThemes: "Themes",
+    dailyDigestInsights: "Observations",
+    dailyDigestSuggestions: "Suggestions",
+    dailyDigestReflections: "Reflection questions",
+    dailyDigestGaps: "Gaps",
+    dailyDigestSources: "Source links",
+    dailyDigestRegenerate: "Regenerate",
+    dailyDigestDismissTip: "Dismiss",
+    dailyDigestGeneratedAt: "Generated",
+    dailyDigestBasedOn: "Based on {count} visited links.",
+    dailyDigestFailed: "Digest failed",
     summaryPendingTitle: "Generating browser-context summary",
     summaryPendingDescription: "Tab Graveyard is reading the selected tabs, behavior signals, and local info cards.",
     summaryStepRead: "Reading tab metadata",
@@ -173,10 +203,10 @@ const messages = {
     archivedOnly: "Archived only",
     noResults: "Nothing found. Try fewer cues, or browse Sessions.",
     guidanceTipLabel: "Tip",
-    recallTipTitle: "Start with what you remember",
-    recallTipDescription: "Search accepts rough cues: a topic, a site, a time window, a color, or a person/company name from the page.",
-    ghostTipTitle: "Ghost Tabs are archive candidates",
-    ghostTipDescription: "These open tabs have been inactive long enough to look safe. Archiving keeps the memory searchable and lets you restore the page later.",
+    recallTipTitle: "Recall current open tabs",
+    recallTipDescription: "This view only shows tabs that are still open in the current browser session and are not Ghost Tabs. Closed tabs, history, and archived memory are not included here.",
+    ghostTipTitle: "Ghost candidates among open tabs",
+    ghostTipDescription: "This view only shows currently open tabs that have been inactive long enough. Closed or historical pages are not treated as Ghost Tabs; archiving moves them into searchable memory.",
     graveyardTipTitle: "Archived memory is still recoverable",
     graveyardTipDescription: "Use this view to browse older saved pages by timeline, source, entity, or session, then restore the ones that matter.",
     sessionsTipTitle: "Sessions group related browsing",
@@ -224,6 +254,8 @@ const messages = {
     localOnlyStub: "Full cloud sync, billing, and public leaderboard services are not enabled yet.",
     cloudAccount: "Sync Identity",
     cloudAccountDescription: "Connect GitHub with a device code so future cloud sync can recognize the same user across devices. Sync is not enabled yet.",
+    cloudAccountSetupStatus: "Set up in Settings",
+    cloudAccountSetupHint: "Open Sync & Data settings, then start GitHub device authorization from there.",
     cloudProvider: "Identity provider",
     cloudAuthStatus: "Auth status",
     connectGithub: "Connect GitHub",
@@ -385,6 +417,29 @@ const messages = {
     summaryScope: "依据范围",
     summaryHighlights: "关键观察",
     summarySourceNote: "基于标签元数据和行为信号，不是页面正文总结。",
+    dailyDigest: "每日回顾",
+    dailyDigestButton: "每日回顾",
+    dailyDigestGenerating: "正在生成回顾...",
+    dailyDigestReady: "昨日回顾已生成",
+    dailyDigestEmpty: "昨天暂无可回顾的访问记录。",
+    dailyDigestTipTitle: "昨日回顾已生成",
+    dailyDigestTipDescription: "查看昨天浏览内容中的主题、信号、建议和反思问题。",
+    dailyDigestViewDetails: "查看详情",
+    dailyDigestDetails: "每日回顾详情",
+    dailyDigestHistory: "历史回顾",
+    dailyDigestNoHistory: "暂无已保存的回顾。",
+    dailyDigestYesterday: "昨天",
+    dailyDigestThemes: "主题",
+    dailyDigestInsights: "观察",
+    dailyDigestSuggestions: "建议",
+    dailyDigestReflections: "反思问题",
+    dailyDigestGaps: "缺口",
+    dailyDigestSources: "来源链接",
+    dailyDigestRegenerate: "重新生成",
+    dailyDigestDismissTip: "关闭提示",
+    dailyDigestGeneratedAt: "生成于",
+    dailyDigestBasedOn: "基于 {count} 个访问链接。",
+    dailyDigestFailed: "回顾生成失败",
     summaryPendingTitle: "正在生成浏览上下文摘要",
     summaryPendingDescription: "Tab Graveyard 正在读取这组标签、行为信号和本地信息卡。",
     summaryStepRead: "读取标签元数据",
@@ -487,10 +542,10 @@ const messages = {
     archivedOnly: "仅归档",
     noResults: "没找到。试试减少一个线索，或从会话里浏览。",
     guidanceTipLabel: "提示",
-    recallTipTitle: "从你记得的线索开始",
-    recallTipDescription: "搜索可以输入粗略线索：主题、网站、时间范围、颜色，或页面里出现过的人名/公司名。",
-    ghostTipTitle: "幽灵标签是归档候选",
-    ghostTipDescription: "这些仍打开的标签已经足够久没有活跃，看起来可以安全归档。归档后记忆仍可搜索，也可以之后恢复页面。",
+    recallTipTitle: "找回当前打开的标签",
+    recallTipDescription: "这里只展示当前已启动浏览器中仍打开、且未进入幽灵状态的标签。历史记录、已关闭标签和归档内容不会出现在这个列表。",
+    ghostTipTitle: "当前打开标签中的幽灵候选",
+    ghostTipDescription: "这里只展示当前浏览器中仍打开、且长时间未活跃的标签。已关闭或历史保存的页面不会进入幽灵标签；归档后才会进入可搜索记忆。",
     graveyardTipTitle: "归档记忆仍然可以找回",
     graveyardTipDescription: "这里适合按时间线、来源、实体或会话浏览旧页面，需要时再恢复重要内容。",
     sessionsTipTitle: "会话会聚合相关浏览上下文",
@@ -538,6 +593,8 @@ const messages = {
     localOnlyStub: "完整云同步、计费和公开排行榜服务尚未启用。",
     cloudAccount: "同步身份",
     cloudAccountDescription: "通过设备码连接 GitHub，让未来的云端同步能在不同设备上识别同一个用户。同步功能尚未启用。",
+    cloudAccountSetupStatus: "去设置页连接",
+    cloudAccountSetupHint: "打开“同步与数据”设置页后，再从那里发起 GitHub 设备码授权。",
     cloudProvider: "身份提供方",
     cloudAuthStatus: "授权状态",
     connectGithub: "连接 GitHub",
@@ -979,16 +1036,28 @@ function App() {
   );
 }
 
-function SyncIdentityButton({ status, compact = false, onClick }: { status: CloudAuthStatus; compact?: boolean; onClick: () => void }) {
+function SyncIdentityButton({
+  status,
+  compact = false,
+  dailyDigest,
+  onSettingsClick,
+  onClick
+}: {
+  status: CloudAuthStatus;
+  compact?: boolean;
+  dailyDigest?: DailyDigestMenuAction;
+  onSettingsClick?: () => void;
+  onClick: () => void;
+}) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const user = status?.user;
   const name = status ? user?.displayName ?? user?.login ?? "GitHub" : t.cloudAccount;
-  const stats = status ? formatGithubIdentityStats(user, t) : t.connectGithub;
+  const stats = status ? formatGithubIdentityStats(user, t) : t.cloudAccountSetupStatus;
   const bio = status ? user?.bio?.trim() : "";
   const login = status && user?.login ? `@${user.login}` : "";
-  const title = status ? `${t.cloudAccount}: ${name}` : `${t.cloudAccount}: ${t.connectGithub}`;
+  const title = status ? `${t.cloudAccount}: ${name}` : `${t.cloudAccount}: ${t.cloudAccountSetupStatus}`;
 
   useEffect(() => {
     if (!open) return undefined;
@@ -1009,6 +1078,18 @@ function SyncIdentityButton({ status, compact = false, onClick }: { status: Clou
   const openSettings = () => {
     setOpen(false);
     onClick();
+  };
+  const openSettingsHome = () => {
+    setOpen(false);
+    (onSettingsClick ?? onClick)();
+  };
+  const openDailyDigest = () => {
+    setOpen(false);
+    dailyDigest?.onOpen();
+  };
+  const regenerateDailyDigest = () => {
+    setOpen(false);
+    dailyDigest?.onRegenerate();
   };
 
   return (
@@ -1049,7 +1130,7 @@ function SyncIdentityButton({ status, compact = false, onClick }: { status: Clou
         >
           {status ? (
             <div className="grid gap-4">
-              <div className="flex items-start gap-3">
+              <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3">
                 {user?.avatarUrl ? (
                   <img className="h-16 w-16 shrink-0 rounded-full border object-cover" src={user.avatarUrl} alt="" />
                 ) : (
@@ -1061,6 +1142,9 @@ function SyncIdentityButton({ status, compact = false, onClick }: { status: Clou
                   <p className="truncate text-xl font-semibold leading-6">{name}</p>
                   {login ? <p className="truncate text-sm text-muted-foreground">{login}</p> : null}
                 </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground" title={t.settings} aria-label={t.settings} onClick={openSettingsHome}>
+                  <Settings className="h-4 w-4" />
+                </Button>
               </div>
 
               {bio ? <p className="line-clamp-3 max-w-full break-words text-sm leading-6 text-foreground [overflow-wrap:anywhere]">{bio}</p> : null}
@@ -1070,23 +1154,36 @@ function SyncIdentityButton({ status, compact = false, onClick }: { status: Clou
                 <span className="truncate">{stats}</span>
               </div>
 
-              <Button variant="outline" className="w-full" onClick={openSettings}>
-                <Settings className="h-4 w-4" />
-                {t.settings}
-              </Button>
+              {dailyDigest ? (
+                <DailyDigestMenuItem
+                  action={dailyDigest}
+                  onOpen={openDailyDigest}
+                  onRegenerate={regenerateDailyDigest}
+                />
+              ) : null}
             </div>
           ) : (
             <div className="grid gap-4">
-              <div className="flex items-start gap-3">
+              <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3">
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border bg-muted">
                   <Github className="h-6 w-6" />
                 </span>
                 <div className="min-w-0">
                   <p className="text-base font-semibold">{t.cloudAccount}</p>
-                  <p className="text-sm leading-5 text-muted-foreground">{t.connectGithub}</p>
+                  <p className="text-sm leading-5 text-muted-foreground">{t.cloudAccountSetupStatus}</p>
                 </div>
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-muted-foreground" title={t.settings} aria-label={t.settings} onClick={openSettingsHome}>
+                  <Settings className="h-4 w-4" />
+                </Button>
               </div>
-              <p className="text-sm leading-6 text-muted-foreground">{t.cloudAccountDescription}</p>
+              <p className="text-sm leading-6 text-muted-foreground">{t.cloudAccountSetupHint}</p>
+              {dailyDigest ? (
+                <DailyDigestMenuItem
+                  action={dailyDigest}
+                  onOpen={openDailyDigest}
+                  onRegenerate={regenerateDailyDigest}
+                />
+              ) : null}
               <Button className="w-full" onClick={openSettings}>
                 <Github className="h-4 w-4" />
                 {t.connectGithub}
@@ -1094,6 +1191,44 @@ function SyncIdentityButton({ status, compact = false, onClick }: { status: Clou
             </div>
           )}
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+function DailyDigestMenuItem({ action, onOpen, onRegenerate }: { action: DailyDigestMenuAction; onOpen: () => void; onRegenerate: () => void }) {
+  const { t } = useI18n();
+  const hasDigest = Boolean(action.response?.digest || action.historyCount);
+  const statusText = action.loading
+    ? t.dailyDigestGenerating
+    : action.response?.status === "error"
+      ? t.dailyDigestFailed
+      : hasDigest
+        ? t.dailyDigestReady
+        : t.dailyDigestEmpty;
+  const detailText = action.historyCount ? `${statusText} · ${action.historyCount}` : statusText;
+
+  return (
+    <div className="grid border-t pt-3">
+      <button
+        type="button"
+        className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1.5 text-left transition hover:bg-muted/50"
+        aria-busy={action.loading || undefined}
+        onClick={onOpen}
+      >
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center text-muted-foreground">
+          {action.loading ? <Loader2 className="h-4 w-4 animate-spin" /> : hasDigest ? <CheckCircle2 className="h-4 w-4" /> : <History className="h-4 w-4" />}
+        </span>
+        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+          <span className="truncate text-sm font-medium text-foreground">{t.dailyDigestButton}</span>
+          <span className="truncate text-xs text-muted-foreground">{detailText}</span>
+        </span>
+      </button>
+      {action.response?.status === "error" ? (
+        <Button type="button" variant="ghost" size="sm" className="mt-1 h-7 justify-start px-1 text-xs" disabled={action.loading} onClick={onRegenerate}>
+          {action.loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+          {t.dailyDigestRegenerate}
+        </Button>
       ) : null}
     </div>
   );
@@ -1109,18 +1244,26 @@ function formatGithubIdentityStats(user: NonNullable<CloudAuthStatus>["user"], t
   return user.login ? `@${user.login}` : t.githubConnected;
 }
 
+function isLiveTabMemory(tab: Pick<TabMemory, "archived" | "tabId">) {
+  return !tab.archived && typeof tab.tabId === "number";
+}
+
+function isRecallTabMemory(tab: Pick<TabMemory, "archived" | "id" | "tabId">, ghostIds: Set<string>) {
+  return isLiveTabMemory(tab) && !ghostIds.has(tab.id);
+}
+
 function Popup({ snapshot, refresh, error, cloudAuthStatus }: { snapshot: AppSnapshot; refresh: () => Promise<void>; error: string | null; cloudAuthStatus: CloudAuthStatus }) {
   const { t } = useI18n();
   const ghostIds = useMemo(() => new Set(snapshot.ghostTabs.map((tab) => tab.id)), [snapshot.ghostTabs]);
   const recallTop = useMemo(
     () => snapshot.tabs
-      .filter((tab) => !tab.archived && !ghostIds.has(tab.id))
+      .filter((tab) => isRecallTabMemory(tab, ghostIds))
       .sort((a, b) => b.lastActivatedAt - a.lastActivatedAt)
       .slice(0, 10),
     [ghostIds, snapshot.tabs]
   );
   const recallCount = useMemo(
-    () => snapshot.tabs.filter((tab) => !tab.archived && !ghostIds.has(tab.id)).length,
+    () => snapshot.tabs.filter((tab) => isRecallTabMemory(tab, ghostIds)).length,
     [ghostIds, snapshot.tabs]
   );
   const ghostTop = useMemo(
@@ -1142,7 +1285,12 @@ function Popup({ snapshot, refresh, error, cloudAuthStatus }: { snapshot: AppSna
             <p className="truncate text-xs text-muted-foreground">{t.tagline}</p>
           </div>
         </div>
-        <SyncIdentityButton status={cloudAuthStatus} compact onClick={() => openSettings(cloudAuthStatus ? undefined : "data")} />
+        <SyncIdentityButton
+          status={cloudAuthStatus}
+          compact
+          onSettingsClick={() => openSettings()}
+          onClick={() => openSettings(cloudAuthStatus ? undefined : "data")}
+        />
       </header>
 
       {error ? <p className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">{error}</p> : null}
@@ -1197,6 +1345,11 @@ function Workspace({ page, snapshot, refresh, cloudAuthStatus }: { page: Page; s
   const [filters, setFilters] = useState<RecallFilters>({ archivedOnly: false, time: "all", source: "all", contentType: "all", importance: "all", readingStatus: "all", color: "all", topic: "all", entity: "all" });
   const [results, setResults] = useState<RecallResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [dailyDigestResponse, setDailyDigestResponse] = useState<DailyDigestResponse | null>(null);
+  const [dailyDigestLoading, setDailyDigestLoading] = useState(false);
+  const [dailyDigestTip, setDailyDigestTip] = useState<DailyDigest | null>(null);
+  const [dailyDigestOpen, setDailyDigestOpen] = useState(false);
+  const dailyDigestStartedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -1221,9 +1374,60 @@ function Workspace({ page, snapshot, refresh, cloudAuthStatus }: { page: Page; s
     setSubmittedQuery(query.trim());
   };
 
+  const loadDailyDigest = async (mode: "auto" | "manual" = "auto") => {
+    setDailyDigestLoading(true);
+    try {
+      const response = await getDailyDigest(mode);
+      setDailyDigestResponse(response);
+      if (response.shouldNotify && response.digest) {
+        setDailyDigestTip(response.digest);
+      }
+      return response;
+    } finally {
+      setDailyDigestLoading(false);
+    }
+  };
+
+  const openDailyDigest = async (digest?: DailyDigest) => {
+    const target = digest ?? dailyDigestResponse?.digest ?? (Array.isArray(snapshot.dailyDigests) ? snapshot.dailyDigests[0] : undefined);
+    setDailyDigestTip(null);
+    setDailyDigestOpen(true);
+    if (target) {
+      void markDailyDigestViewed(target.id);
+      setDailyDigestResponse((prev) => prev ? {
+        ...prev,
+        digest: prev.digest?.id === target.id ? { ...prev.digest, viewedAt: Date.now(), tipShownAt: prev.digest.tipShownAt ?? Date.now() } : prev.digest,
+        history: (Array.isArray(prev.history) ? prev.history : []).map((item) => item.id === target.id ? { ...item, viewedAt: Date.now(), tipShownAt: item.tipShownAt ?? Date.now() } : item)
+      } : prev);
+    }
+  };
+
+  const dismissDigestTip = async (digest: DailyDigest) => {
+    setDailyDigestTip(null);
+    try {
+      const response = await dismissDailyDigestTip(digest.id);
+      setDailyDigestResponse(response);
+    } catch {
+      // The tip is a convenience notification; the saved digest remains available from the button.
+    }
+  };
+
+  useEffect(() => {
+    if (dailyDigestStartedRef.current) return;
+    dailyDigestStartedRef.current = true;
+    void loadDailyDigest("auto").catch(() => undefined);
+  }, []);
+
   const aiAvailable = canUseAiFeatures(snapshot.settings);
   const aiFallbackReason = results.find((tab) => tab.aiRecallStatus === "fallback")?.aiFallbackReason;
-  const continueTabs = useMemo(() => snapshot.tabs.filter((tab) => !tab.archived).sort((a, b) => b.lastActivatedAt - a.lastActivatedAt), [snapshot.tabs]);
+  const snapshotDailyDigests = Array.isArray(snapshot.dailyDigests) ? snapshot.dailyDigests : [];
+  const responseHistory = Array.isArray(dailyDigestResponse?.history) ? dailyDigestResponse.history : [];
+  const digestHistory = responseHistory.length ? responseHistory : snapshotDailyDigests;
+  const ghostIds = useMemo(() => new Set(snapshot.ghostTabs.map((tab) => tab.id)), [snapshot.ghostTabs]);
+  const continueTabs = useMemo(
+    () => snapshot.tabs.filter((tab) => isRecallTabMemory(tab, ghostIds)).sort((a, b) => b.lastActivatedAt - a.lastActivatedAt),
+    [ghostIds, snapshot.tabs]
+  );
 
   return (
     <main className="min-h-screen">
@@ -1237,8 +1441,29 @@ function Workspace({ page, snapshot, refresh, cloudAuthStatus }: { page: Page; s
                 <p className="text-sm text-muted-foreground">{t.tagline}</p>
               </div>
             </div>
-            <SyncIdentityButton status={cloudAuthStatus} onClick={() => openSettings(cloudAuthStatus ? undefined : "data")} />
+            <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+              <SyncIdentityButton
+                status={cloudAuthStatus}
+                dailyDigest={{
+                  response: dailyDigestResponse,
+                  loading: dailyDigestLoading,
+                  historyCount: digestHistory.length,
+                  onOpen: () => void openDailyDigest(),
+                  onRegenerate: () => void loadDailyDigest("manual")
+                }}
+                onSettingsClick={() => openSettings()}
+                onClick={() => openSettings(cloudAuthStatus ? undefined : "data")}
+              />
+            </div>
           </header>
+          {dailyDigestTip ? (
+            <DailyDigestTip
+              digest={dailyDigestTip}
+              onShown={() => void ackDailyDigestTip(dailyDigestTip.id)}
+              onOpen={() => void openDailyDigest(dailyDigestTip)}
+              onDismiss={() => void dismissDigestTip(dailyDigestTip)}
+            />
+          ) : null}
           <RecallSearchBar query={query} setQuery={setQuery} isSearching={isSearching} onSubmit={submitSearch} aiAvailable={aiAvailable} fallbackReason={aiFallbackReason} />
         </div>
       </section>
@@ -1247,6 +1472,16 @@ function Workspace({ page, snapshot, refresh, cloudAuthStatus }: { page: Page; s
         <Dashboard snapshot={snapshot} results={results} query={submittedQuery} filters={filters} setFilters={setFilters} refresh={refresh} isSearching={isSearching} />
       </section>
       <LogoShowcase open={logoOpen} onOpenChange={setLogoOpen} />
+      <DailyDigestDialog
+        open={dailyDigestOpen}
+        onOpenChange={setDailyDigestOpen}
+        response={dailyDigestResponse}
+        history={digestHistory}
+        loading={dailyDigestLoading}
+        tabs={snapshot.tabs}
+        onRegenerate={() => void loadDailyDigest("manual")}
+        onSelectDigest={(digest) => void openDailyDigest(digest)}
+      />
     </main>
   );
 }
@@ -1345,6 +1580,201 @@ function RecallSearchBar({
   );
 }
 
+function DailyDigestTip({ digest, onShown, onOpen, onDismiss }: { digest: DailyDigest; onShown: () => void; onOpen: () => void; onDismiss: () => void }) {
+  const { t } = useI18n();
+  useEffect(() => {
+    onShown();
+  }, [digest.id]);
+  return (
+    <div className="fixed right-5 top-5 z-50 w-[min(360px,calc(100vw-2rem))] rounded-md border bg-popover p-4 text-popover-foreground shadow-xl" role="status" aria-live="polite">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border bg-primary/10 text-primary">
+          <Sparkles className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-semibold">{t.dailyDigestTipTitle}</p>
+          <p className="mt-1 text-sm leading-5 text-muted-foreground">{t.dailyDigestTipDescription}</p>
+          <p className="mt-2 text-xs text-muted-foreground">{interpolate(t.dailyDigestBasedOn, { count: digest.tabCount })}</p>
+        </div>
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" size="sm" onClick={onDismiss}>{t.dailyDigestDismissTip}</Button>
+        <Button size="sm" onClick={onOpen}>{t.dailyDigestViewDetails}</Button>
+      </div>
+    </div>
+  );
+}
+
+function DailyDigestDialog({
+  open,
+  onOpenChange,
+  response,
+  history,
+  loading,
+  tabs,
+  onRegenerate,
+  onSelectDigest
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  response: DailyDigestResponse | null;
+  history: DailyDigest[];
+  loading: boolean;
+  tabs: TabMemory[];
+  onRegenerate: () => void;
+  onSelectDigest: (digest: DailyDigest) => void;
+}) {
+  const { language, t } = useI18n();
+  const digests = useMemo(() => mergeDailyDigestHistory(response?.digest, Array.isArray(history) ? history : []), [response?.digest, history]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = digests.find((digest) => digest.id === selectedId) ?? digests[0];
+  const tabsById = useMemo(() => new Map(tabs.map((tab) => [tab.id, tab])), [tabs]);
+  const selectedThemes = safeStringList(selected?.themes);
+  const selectedInsights = safeStringList(selected?.insights);
+  const selectedSuggestions = safeStringList(selected?.suggestions);
+  const selectedReflections = safeStringList(selected?.reflectionQuestions);
+  const selectedGaps = safeStringList(selected?.gaps);
+  const selectedTabIds = safeStringList(selected?.tabIds);
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedId((current) => current && digests.some((digest) => digest.id === current) ? current : digests[0]?.id ?? null);
+  }, [open, digests]);
+
+  const selectDigest = (digest: DailyDigest) => {
+    setSelectedId(digest.id);
+    onSelectDigest(digest);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[88vh] max-h-[88vh] w-[min(94vw,980px)] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b px-5 py-4 pr-14">
+          <DialogTitle>{t.dailyDigestDetails}</DialogTitle>
+          <DialogDescription>{selected ? `${formatDigestDate(selected.dateKey, language)} · ${interpolate(t.dailyDigestBasedOn, { count: selected.tabCount })}` : t.dailyDigestNoHistory}</DialogDescription>
+        </DialogHeader>
+
+        <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden md:grid-cols-[240px_minmax(0,1fr)] md:grid-rows-none">
+          <aside className="min-h-0 overflow-hidden border-b bg-muted/20 p-3 md:border-b-0 md:border-r">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase text-muted-foreground">{t.dailyDigestHistory}</p>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" disabled={loading} onClick={onRegenerate}>
+                {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                {t.dailyDigestRegenerate}
+              </Button>
+            </div>
+            <div className="grid max-h-48 gap-1 overflow-y-auto pr-1 md:max-h-[calc(88vh-11.5rem)]">
+              {digests.length ? digests.map((digest) => (
+                <button
+                  key={digest.id}
+                  type="button"
+                  className={cn(
+                    "relative grid min-w-0 gap-1 rounded-md border py-2.5 pl-7 pr-3 text-left text-sm transition hover:bg-background",
+                    selected?.id === digest.id
+                      ? "border-primary/40 bg-background text-foreground shadow-sm ring-1 ring-primary/15"
+                      : "border-transparent text-muted-foreground hover:border-border"
+                  )}
+                  onClick={() => selectDigest(digest)}
+                  aria-current={selected?.id === digest.id ? "true" : undefined}
+                >
+                  {selected?.id === digest.id ? <span className="absolute left-2 top-3 h-2 w-2 rounded-full bg-primary" /> : null}
+                  <span className="truncate font-medium text-foreground">{formatDigestDate(digest.dateKey, language)}</span>
+                  <span className={cn("truncate text-xs", selected?.id === digest.id ? "text-muted-foreground" : undefined)}>{safeStringList(digest.themes).slice(0, 2).join(", ") || digest.summary}</span>
+                </button>
+              )) : (
+                <p className="rounded-md border bg-background p-3 text-sm text-muted-foreground">{t.dailyDigestNoHistory}</p>
+              )}
+            </div>
+          </aside>
+
+          <div className="min-h-0 overflow-y-auto overscroll-contain p-5">
+            {loading && !selected ? (
+              <PendingBlock title={t.dailyDigestGenerating} description={t.summaryPendingDescription} steps={[t.summaryStepRead, t.summaryStepGenerate, t.summaryStepFinish]} />
+            ) : null}
+            {response?.status === "error" ? (
+              <StatusCallout variant="error" title={t.dailyDigestFailed} description={response.error} action={<Button variant="outline" size="sm" onClick={onRegenerate}>{t.retry}</Button>} />
+            ) : null}
+            {selected ? (
+              <div className="grid gap-5">
+                <div className="grid gap-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <Badge variant="secondary">{formatDigestDate(selected.dateKey, language)}</Badge>
+                    <span>{t.dailyDigestGeneratedAt}: {formatAbsoluteDateTime(selected.generatedAt)}</span>
+                  </div>
+                  <p className="max-w-[72ch] text-base leading-7 text-foreground">{selected.summary}</p>
+                  {selectedThemes.length ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {selectedThemes.map((theme) => <Badge key={theme} variant="outline">{theme}</Badge>)}
+                    </div>
+                  ) : null}
+                </div>
+
+                <DailyDigestSection title={t.dailyDigestInsights} items={selectedInsights} />
+                <DailyDigestSection title={t.dailyDigestSuggestions} items={selectedSuggestions} />
+                <DailyDigestSection title={t.dailyDigestReflections} items={selectedReflections} />
+                <DailyDigestSection title={t.dailyDigestGaps} items={selectedGaps} muted />
+
+                <section className="grid gap-2">
+                  <h3 className="text-sm font-semibold text-muted-foreground">{t.dailyDigestSources}</h3>
+                  <ul className="list-disc space-y-1.5 pl-5 marker:text-muted-foreground">
+                    {selectedTabIds.slice(0, 12).map((tabId) => {
+                      const tab = tabsById.get(tabId);
+                      if (!tab) return null;
+                      return (
+                        <li key={tabId} className="min-w-0 pl-1 text-sm leading-6 text-muted-foreground">
+                          <a href={tab.url} target="_blank" rel="noreferrer" className="underline underline-offset-2 transition hover:text-foreground">
+                            {tab.title}
+                          </a>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              </div>
+            ) : !loading ? (
+              <div className="rounded-md border bg-muted/20 p-6 text-center text-sm text-muted-foreground">{response?.status === "idle" ? t.dailyDigestEmpty : t.dailyDigestNoHistory}</div>
+            ) : null}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DailyDigestSection({ title, items, muted = false }: { title: string; items: string[]; muted?: boolean }) {
+  if (!items.length) return null;
+  return (
+    <section className="grid gap-2">
+      <h3 className="text-sm font-semibold">{title}</h3>
+      <ul className={cn("list-disc space-y-1.5 pl-5 marker:text-muted-foreground", muted ? "text-muted-foreground" : "text-foreground")}>
+        {items.map((item) => (
+          <li key={item} className="pl-1 text-sm leading-6">{item}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function safeStringList(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)
+    : [];
+}
+
+function mergeDailyDigestHistory(current: DailyDigest | undefined, history: DailyDigest[]) {
+  const byId = new Map<string, DailyDigest>();
+  for (const digest of [current, ...history]) {
+    if (digest) byId.set(digest.id, digest);
+  }
+  return Array.from(byId.values()).sort((a, b) => b.dateKey.localeCompare(a.dateKey) || b.generatedAt - a.generatedAt);
+}
+
+function formatDigestDate(dateKey: string, language: UiLanguage) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = year && month && day ? new Date(year, month - 1, day) : new Date(dateKey);
+  return date.toLocaleDateString(language === "zh" ? "zh-CN" : "en-US", { month: "short", day: "numeric", weekday: "short" });
+}
+
 function Dashboard({
   snapshot,
   results,
@@ -1381,8 +1811,12 @@ function Dashboard({
     ? snapshot.sessions.filter((session) => session.tabIds.some((tabId) => matchedIds.has(tabId)))
     : snapshot.sessions;
   const ghostIds = useMemo(() => new Set(snapshot.ghostTabs.map((tab) => tab.id)), [snapshot.ghostTabs]);
-  const scopedRecallResults = hasGlobalQuery ? results : results.filter((tab) => !tab.archived && !ghostIds.has(tab.id));
-  const recallCount = hasGlobalQuery ? scopedRecallResults.length : snapshot.tabs.filter((tab) => !tab.archived && !ghostIds.has(tab.id)).length;
+  const liveRecallTabs = useMemo(() => snapshot.tabs.filter((tab) => isRecallTabMemory(tab, ghostIds)), [ghostIds, snapshot.tabs]);
+  const scopedRecallResults = hasGlobalQuery
+    ? results.filter((tab) => isRecallTabMemory(tab, ghostIds))
+    : [];
+  const recallFallbackTabs = hasGlobalQuery ? [] : liveRecallTabs;
+  const recallCount = hasGlobalQuery ? scopedRecallResults.length : liveRecallTabs.length;
   return (
     <Tabs value={activeTab} onValueChange={setDashboardTab}>
       <TabsList>
@@ -1398,7 +1832,7 @@ function Dashboard({
           <div className="grid auto-rows-min gap-3">
             <GuidanceTip title={t.recallTipTitle} description={t.recallTipDescription} />
             <RecallSynthesis query={query} results={scopedRecallResults} snapshot={snapshot} isSearching={isSearching} />
-            <ResultGrid results={scopedRecallResults} fallbackTabs={[]} refresh={refresh} />
+            <ResultGrid results={scopedRecallResults} fallbackTabs={recallFallbackTabs} refresh={refresh} />
           </div>
         </div>
       </TabsContent>
@@ -1488,7 +1922,7 @@ function AnalyticsPanel({ snapshot, refresh }: { snapshot: AppSnapshot; refresh:
     });
   };
   const openGhostDrilldown = (week: AnalyticsWeek, bucket: GhostBucket) => {
-    const tabs = sortRecent(snapshot.tabs.filter((tab) => tab.lastActivatedAt >= week.start && tab.lastActivatedAt < week.end && getGhostBucket(tab) === bucket));
+    const tabs = sortRecent(snapshot.ghostTabs.filter((tab) => tab.lastActivatedAt >= week.start && tab.lastActivatedAt < week.end && getGhostBucket(tab) === bucket));
     setDrilldown({
       id: `ghost-${week.key}-${bucket}`,
       title: `${ghostBucketLabel(bucket, labels)} · ${week.label}`,
@@ -2253,7 +2687,7 @@ function buildAnalytics(snapshot: AppSnapshot) {
       openedWeek.total += 1;
     }
 
-    const lastActiveWeek = weekByStart.get(startOfWeekTimestamp(tab.lastActivatedAt));
+    const lastActiveWeek = ghostIds.has(tab.id) ? weekByStart.get(startOfWeekTimestamp(tab.lastActivatedAt)) : undefined;
     if (lastActiveWeek && now - tab.lastActivatedAt >= 7 * 24 * 60 * 60 * 1000) {
       const inactiveDays = Math.floor((now - tab.lastActivatedAt) / (24 * 60 * 60 * 1000));
       if (inactiveDays >= 90) lastActiveWeek.ghost90 += 1;
@@ -3302,6 +3736,11 @@ function SettingsPage({ snapshot, refresh, cloudAuthStatus, onCloudAuthStatusCha
           </div>
           <SyncIdentityButton
             status={cloudAuthStatus}
+            onSettingsClick={() => {
+              setSettingsTab("general");
+              window.history.replaceState(null, document.title, "#general");
+              window.scrollTo(0, 0);
+            }}
             onClick={() => {
               setSettingsTab("data");
               window.history.replaceState(null, document.title, "#data");

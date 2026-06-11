@@ -4,6 +4,7 @@ import type {
   BrowseGroupMode,
   AppSnapshot,
   ContentType,
+  DailyDigest,
   GraveyardGroup,
   GraveyardState,
   RecallFilters,
@@ -58,7 +59,8 @@ export const emptyState = (): GraveyardState => ({
   settings: defaultSettings,
   deletedUrls: [],
   rules: [],
-  events: []
+  events: [],
+  dailyDigests: []
 });
 
 export function isExtensionRuntime() {
@@ -118,7 +120,13 @@ export function normalizeState(raw: unknown): GraveyardState {
     lastUndo: candidate.lastUndo,
     archivePreview: candidate.archivePreview,
     rules: Array.isArray(candidate.rules) ? candidate.rules : [],
-    events: Array.isArray(candidate.events) ? candidate.events.slice(-400) : []
+    events: Array.isArray(candidate.events) ? candidate.events.slice(-400) : [],
+    dailyDigests: Array.isArray(candidate.dailyDigests)
+      ? candidate.dailyDigests.flatMap((digest) => {
+          const normalized = normalizeDailyDigest(digest);
+          return normalized ? [normalized] : [];
+        }).slice(-90)
+      : []
   };
 }
 
@@ -143,6 +151,7 @@ export function createSnapshot(state: GraveyardState, now = Date.now()): AppSnap
     settings: state.settings,
     ghostTabs,
     archivedTabs,
+    dailyDigests: state.dailyDigests,
     totalTabs: tabs.length,
     todayCount,
     yesterdayCount: yesterdayTabs.length,
@@ -232,6 +241,7 @@ export function ensureSessions(state: GraveyardState): GraveyardState {
 }
 
 export function isGhostTab(tab: TabMemory, settings: Settings, now = Date.now()) {
+  if (typeof tab.tabId !== "number") return false;
   if (tab.archived || tab.pinned || tab.audible) return false;
   if (tab.card.importance === "must" || tab.card.importance === "should") return false;
   if (isBlacklisted(tab.domain, settings.blacklistDomains)) return false;
@@ -244,6 +254,61 @@ export function isVisibleTab(tab: TabMemory, settings: Settings) {
 
 export function getVisibleTabs(tabs: TabMemory[], settings: Settings) {
   return tabs.filter((tab) => isVisibleTab(tab, settings));
+}
+
+export function getLocalDateKey(timestamp = Date.now()) {
+  const date = new Date(timestamp);
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
+}
+
+export function getPreviousLocalDateKey(timestamp = Date.now()) {
+  const date = new Date(timestamp);
+  date.setDate(date.getDate() - 1);
+  return getLocalDateKey(date.getTime());
+}
+
+export function startOfLocalDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  if (!year || !month || !day) return startOfDay(Date.now()) - dayMs(1);
+  return new Date(year, month - 1, day).getTime();
+}
+
+export function getDailyDigestTabs(tabs: TabMemory[], settings: Settings, dateKey: string, limit = 48) {
+  const start = startOfLocalDateKey(dateKey);
+  const end = start + dayMs(1);
+  return dedupeTabs(
+    getVisibleTabs(tabs, settings).filter((tab) => (
+      (tab.lastActivatedAt >= start && tab.lastActivatedAt < end)
+      || (tab.openedAt >= start && tab.openedAt < end)
+    ))
+  )
+    .sort((left, right) => dailyDigestTabScore(right) - dailyDigestTabScore(left) || right.lastActivatedAt - left.lastActivatedAt)
+    .slice(0, limit);
+}
+
+export function buildDailyDigestSourceHash(tabs: TabMemory[]) {
+  const input = [...tabs]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((tab) => [
+      tab.id,
+      tab.url,
+      tab.title,
+      tab.card.summary,
+      tab.card.topics.join(","),
+      tab.card.entities.join(","),
+      tab.card.importance,
+      tab.card.readingStatus,
+      tab.card.contentType,
+      tab.card.source,
+      tab.lastActivatedAt,
+      tab.openedAt,
+      tab.signals.activeMs,
+      tab.signals.activationCount,
+      tab.signals.maxScrollPercent,
+      tab.signals.copiedTextCount
+    ].join("|"))
+    .join("\n");
+  return hashText(input);
 }
 
 export function recallTabs(tabs: TabMemory[], query: string, filters: RecallFilters = {}, now = Date.now()): RecallResult[] {
@@ -300,6 +365,32 @@ export function addEvent(state: GraveyardState, type: string, meta?: AnalyticsEv
   return {
     ...state,
     events: [...state.events, { type, meta, createdAt: Date.now() }].slice(-400)
+  };
+}
+
+function normalizeDailyDigest(value: unknown): DailyDigest | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const digest = value as Partial<DailyDigest>;
+  if (!digest.dateKey || !digest.summary) return undefined;
+  const generatedAt = Number(digest.generatedAt) || Date.now();
+  return {
+    id: stringValue(digest.id, `digest-${digest.dateKey}`),
+    dateKey: stringValue(digest.dateKey, getPreviousLocalDateKey(generatedAt)),
+    presentationDateKey: stringValue(digest.presentationDateKey, getLocalDateKey(generatedAt)),
+    sourceHash: stringValue(digest.sourceHash, ""),
+    generationSource: digest.generationSource === "ai" ? "ai" : "local",
+    generatedAt,
+    tipShownAt: optionalNumber(digest.tipShownAt),
+    viewedAt: optionalNumber(digest.viewedAt),
+    dismissedAt: optionalNumber(digest.dismissedAt),
+    tabIds: stringArray(digest.tabIds).slice(0, 80),
+    tabCount: Number(digest.tabCount) || stringArray(digest.tabIds).length,
+    summary: stringValue(digest.summary, ""),
+    themes: stringArray(digest.themes).slice(0, 8),
+    insights: stringArray(digest.insights).slice(0, 8),
+    suggestions: stringArray(digest.suggestions).slice(0, 8),
+    reflectionQuestions: stringArray(digest.reflectionQuestions).slice(0, 8),
+    gaps: stringArray(digest.gaps).slice(0, 8)
   };
 }
 
@@ -784,6 +875,16 @@ function latestActivation(tabs: TabMemory[]) {
   return Math.max(...tabs.map((tab) => tab.lastActivatedAt));
 }
 
+function dailyDigestTabScore(tab: TabMemory) {
+  return (
+    importanceWeight(tab.card.importance) * 120_000
+    + Math.min(tab.signals.activeMs, 45 * 60 * 1000)
+    + tab.signals.activationCount * 60_000
+    + tab.signals.maxScrollPercent * 2_000
+    + tab.signals.copiedTextCount * 90_000
+  );
+}
+
 function normalizeSessionTerm(value?: string) {
   return (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -821,10 +922,28 @@ function startOfDay(now: number) {
   return date.getTime();
 }
 
+function padDatePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
 function dayMs(days: number) {
   return days * 24 * 60 * 60 * 1000;
 }
 
 function importanceWeight(importance: string) {
   return { must: 6, should: 4, maybe: 2, safe: 0 }[importance] ?? 0;
+}
+
+function stringValue(value: unknown, fallback: string) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function optionalNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function stringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean)
+    : [];
 }

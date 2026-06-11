@@ -141,6 +141,7 @@ export type GraveyardState = {
   archivePreview?: ArchivePreview;
   rules: UserRule[];
   events: AnalyticsEvent[];
+  dailyDigests: DailyDigest[];
 };
 
 export type UndoArchive = {
@@ -204,6 +205,37 @@ export type RecallSynthesisResult = {
   generatedAt: number;
 };
 
+export type DailyDigest = {
+  id: string;
+  dateKey: string;
+  presentationDateKey: string;
+  sourceHash: string;
+  generationSource: "ai" | "local";
+  generatedAt: number;
+  tipShownAt?: number;
+  viewedAt?: number;
+  dismissedAt?: number;
+  tabIds: string[];
+  tabCount: number;
+  summary: string;
+  themes: string[];
+  insights: string[];
+  suggestions: string[];
+  reflectionQuestions: string[];
+  gaps: string[];
+};
+
+export type DailyDigestResponse = {
+  status: "idle" | "generating" | "ready" | "error";
+  targetDateKey: string;
+  tabCount: number;
+  digest?: DailyDigest;
+  history: DailyDigest[];
+  shouldNotify: boolean;
+  generated?: boolean;
+  error?: string;
+};
+
 export type GraveyardGroup = {
   key: string;
   label: string;
@@ -216,6 +248,7 @@ export type AppSnapshot = {
   settings: Settings;
   ghostTabs: TabMemory[];
   archivedTabs: TabMemory[];
+  dailyDigests: DailyDigest[];
   totalTabs: number;
   todayCount: number;
   yesterdayCount: number;
@@ -250,6 +283,10 @@ export type ExtensionRequest =
   | { type: "quickRecall"; query: string }
   | { type: "commandPaletteContext" }
   | { type: "summarizeRecall"; query: string; tabIds?: string[]; sessionId?: string }
+  | { type: "getDailyDigest"; mode?: "auto" | "manual"; dateKey?: string }
+  | { type: "ackDailyDigestTip"; digestId: string }
+  | { type: "markDailyDigestViewed"; digestId: string }
+  | { type: "dismissDailyDigestTip"; digestId: string }
   | { type: "saveSettings"; settings: Partial<Settings> }
   | { type: "exportData" }
   | { type: "importData"; state: GraveyardState }

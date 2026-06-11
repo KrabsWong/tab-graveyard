@@ -7,7 +7,11 @@ import {
   defaultBehaviorSignals,
   emptyState,
   ensureSessions,
+  buildDailyDigestSourceHash,
   getDomain,
+  getDailyDigestTabs,
+  getLocalDateKey,
+  getPreviousLocalDateKey,
   getState,
   getVisibleTabs,
   isBlacklisted,
@@ -21,7 +25,7 @@ import {
   shouldSkipUrl
 } from "@/lib/memory";
 import { CLOUD_AUTH_SERVER_URL, getCloudAuthState, revokeCloudAuthState, setCloudAuthState } from "@/lib/cloud-auth";
-import type { ContentType, ExtensionRequest, ExtensionResponse, GraveyardState, Importance, QuickRecallItem, ReadingStatus, RecallCue, RecallFilters, RecallResult, RecallSynthesisResult, SourceType, TabInfoCard, TabMemory } from "@/lib/types";
+import type { ContentType, DailyDigest, DailyDigestResponse, ExtensionRequest, ExtensionResponse, GraveyardState, Importance, QuickRecallItem, ReadingStatus, RecallCue, RecallFilters, RecallResult, RecallSynthesisResult, SourceType, TabInfoCard, TabMemory } from "@/lib/types";
 
 const UNDO_MS = 5_000;
 const AUTO_ENHANCE_STABLE_MS = 30_000;
@@ -30,6 +34,7 @@ const activeStartedByTabId = new Map<number, number>();
 const autoEnhanceQueue: Array<{ tabId: number; url: string }> = [];
 const autoEnhancePendingKeys = new Set<string>();
 let autoEnhanceRunning = false;
+const dailyDigestRuns = new Map<string, Promise<DailyDigestResponse>>();
 
 function logResurface(stage: string, details?: Record<string, unknown>) {
   console.info("[Tab Graveyard][resurface]", stage, details ?? {});
@@ -201,6 +206,14 @@ async function handleMessage(request: ExtensionRequest) {
     }
     case "summarizeRecall":
       return summarizeRecallWithDeepSeek(request.query, request.tabIds, request.sessionId);
+    case "getDailyDigest":
+      return getDailyDigest(request.mode ?? "auto", request.dateKey);
+    case "ackDailyDigestTip":
+      return updateDailyDigestMeta(request.digestId, { tipShownAt: Date.now(), dismissedAt: undefined });
+    case "markDailyDigestViewed":
+      return updateDailyDigestMeta(request.digestId, { viewedAt: Date.now(), tipShownAt: Date.now(), dismissedAt: undefined });
+    case "dismissDailyDigestTip":
+      return updateDailyDigestMeta(request.digestId, { dismissedAt: Date.now(), tipShownAt: Date.now() });
     case "saveSettings":
       return mutate((state) =>
         addEvent(
@@ -354,7 +367,21 @@ async function deleteTab(tabId: string) {
 async function recordOpenTabs() {
   const tabs = await chrome.tabs.query({});
   let state = await getState();
-  if (state.settings.recordingPaused) return;
+  const openTabIds = new Set(tabs.map((tab) => tab.id).filter((id): id is number => typeof id === "number"));
+  const syncedTabs = state.tabs.map((tab) => {
+    if (tab.archived || typeof tab.tabId !== "number" || openTabIds.has(tab.tabId)) return tab;
+    return { ...tab, tabId: undefined };
+  });
+  if (syncedTabs.some((tab, index) => tab !== state.tabs[index])) {
+    state = { ...state, tabs: syncedTabs, archivePreview: undefined };
+    for (const tabId of activeStartedByTabId.keys()) {
+      if (!openTabIds.has(tabId)) activeStartedByTabId.delete(tabId);
+    }
+  }
+  if (state.settings.recordingPaused) {
+    await setState(state);
+    return;
+  }
   for (const tab of tabs) {
     if (!tab.url || tab.incognito || isBlacklisted(getDomain(tab.url), state.settings.blacklistDomains)) continue;
     if (isDeletedUrl(state, tab.url)) continue;
@@ -486,11 +513,14 @@ async function enhanceStableTab(tabId: number, url: string) {
 }
 
 function buildMemoryFromTab(tab: chrome.tabs.Tab, state: GraveyardState, activatedAt?: number, existing = findExistingTab(state, tab)) {
-  const memory = createTabMemory(tab, existing);
+  const now = Date.now();
+  const reopensClosedMemory = Boolean(existing && existing.tabId !== tab.id && typeof existing.tabId !== "number");
+  const memory = createTabMemory(tab, existing, now);
   if (!memory) return undefined;
   const next = {
     ...memory,
-    lastActivatedAt: activatedAt ?? existing?.lastActivatedAt ?? memory.lastActivatedAt,
+    openedAt: reopensClosedMemory ? now : memory.openedAt,
+    lastActivatedAt: activatedAt ?? (reopensClosedMemory ? now : existing?.lastActivatedAt ?? memory.lastActivatedAt),
     archived: false,
     archivedAt: undefined,
     signals: {
@@ -502,10 +532,12 @@ function buildMemoryFromTab(tab: chrome.tabs.Tab, state: GraveyardState, activat
 }
 
 function findExistingTab(state: GraveyardState, tab: chrome.tabs.Tab) {
-  return state.tabs.find((item) => item.tabId === tab.id && !item.archived) ?? state.tabs.find((item) => item.url === tab.url && !item.archived);
+  return state.tabs.find((item) => item.tabId === tab.id && !item.archived)
+    ?? state.tabs.find((item) => item.url === tab.url && !item.archived && typeof item.tabId !== "number");
 }
 
 async function archiveGhosts(allowedIds?: Set<string>) {
+  await recordOpenTabs();
   const state = await getState();
   const now = Date.now();
   const ghostTabs = state.tabs.filter((tab) => isGhostTab(tab, state.settings, now) && (!allowedIds || allowedIds.has(tab.id)));
@@ -628,6 +660,7 @@ async function markClosed(tabId: number) {
 }
 
 async function previewArchive() {
+  await recordOpenTabs();
   const state = await getState();
   const now = Date.now();
   const ghostTabs = state.tabs.filter((tab) => isGhostTab(tab, state.settings, now));
@@ -754,6 +787,7 @@ async function undoArchive() {
   const state = await getState();
   const undo = state.lastUndo;
   if (!undo || undo.expiresAt < Date.now()) return createSnapshot(state);
+  const now = Date.now();
 
   const restoredById = new Map<string, TabMemory>();
   for (const tab of undo.tabs) {
@@ -769,7 +803,9 @@ async function undoArchive() {
       archived: false,
       archivedAt: undefined,
       restored: true,
-      restoredAt: Date.now(),
+      restoredAt: now,
+      openedAt: now,
+      lastActivatedAt: now,
       tabId: created.id,
       windowId: created.windowId,
       index: created.index
@@ -796,6 +832,7 @@ async function restoreTab(tabId: string, inWindow = false) {
   if (!isVisibleTab(tab, state.settings)) return;
   const now = Date.now();
   let created: chrome.tabs.Tab | chrome.windows.Window;
+  let reopened = false;
   if (!inWindow && typeof tab.tabId === "number") {
     try {
       const existing = await chrome.tabs.update(tab.tabId, { active: true });
@@ -803,9 +840,11 @@ async function restoreTab(tabId: string, inWindow = false) {
       created = existing;
     } catch {
       created = await chrome.tabs.create({ url: tab.url, active: true });
+      reopened = true;
     }
   } else {
     created = inWindow ? await chrome.windows.create({ url: tab.url, focused: true }) : await chrome.tabs.create({ url: tab.url, active: true });
+    reopened = true;
   }
   const chromeTab = isChromeWindow(created) ? created.tabs?.[0] : created;
   const next = addEvent(
@@ -819,6 +858,7 @@ async function restoreTab(tabId: string, inWindow = false) {
               archivedAt: undefined,
               restored: true,
               restoredAt: now,
+              openedAt: reopened ? now : item.openedAt,
               lastActivatedAt: now,
               tabId: chromeTab?.id,
               windowId: chromeTab?.windowId,
@@ -924,6 +964,7 @@ async function restoreSession(sessionId: string) {
   const state = ensureSessions(await getState());
   const tabs = getVisibleTabs(state.tabs, state.settings).filter((tab) => tab.sessionId === sessionId);
   if (!tabs.length) return;
+  const now = Date.now();
   const win = await chrome.windows.create({ url: tabs.map((tab) => tab.url), focused: true });
   const createdTabs = win.tabs ?? [];
   const restoredIds = new Set(tabs.map((tab) => tab.id));
@@ -938,7 +979,9 @@ async function restoreSession(sessionId: string) {
           archived: false,
           archivedAt: undefined,
           restored: true,
-          restoredAt: Date.now(),
+          restoredAt: now,
+          openedAt: now,
+          lastActivatedAt: now,
           tabId: created?.id,
           windowId: created?.windowId
         };
@@ -1201,13 +1244,13 @@ async function recallWithDeepSeek(query: string, filters?: RecallFilters) {
 async function quickRecall(query: string): Promise<QuickRecallItem[]> {
   const state = ensureSessions(await getState());
   const now = Date.now();
-  const tabs = getVisibleTabs(state.tabs, state.settings);
+  const tabs = getVisibleTabs(state.tabs, state.settings).filter(isQuickRecallCandidate);
   const normalizedQuery = query.trim().toLowerCase();
   const matchedTabs = normalizedQuery
     ? recallTabs(tabs, query, {}).slice(0, 10)
     : tabs
         .slice()
-        .filter((tab) => !tab.archived && !isGhostTab(tab, state.settings, now))
+        .filter((tab) => isOpenTabMemory(tab) && !isGhostTab(tab, state.settings, now))
         .sort((a, b) => b.lastActivatedAt - a.lastActivatedAt)
         .slice(0, 10)
         .map((tab) => ({ ...tab, score: 0, matchedCues: [], sourceBreakdown: {} }));
@@ -1234,6 +1277,14 @@ async function quickRecall(query: string): Promise<QuickRecallItem[]> {
   return Array.from(items.values()).slice(0, 10);
 }
 
+function isQuickRecallCandidate(tab: TabMemory) {
+  return tab.archived || isOpenTabMemory(tab);
+}
+
+function isOpenTabMemory(tab: Pick<TabMemory, "archived" | "tabId">) {
+  return !tab.archived && typeof tab.tabId === "number";
+}
+
 function quickRecallItemFromTab(tab: TabMemory, state: GraveyardState, now: number, reason?: string, category?: QuickRecallItem["category"]): QuickRecallItem {
   const resolvedCategory = category ?? (tab.archived ? "archived" : isGhostTab(tab, state.settings, now) ? "ghost" : "active");
   const fallbackReason = tab.archived ? "Archived memory" : resolvedCategory === "ghost" ? "Ghost tab" : "Active tab";
@@ -1247,6 +1298,253 @@ function quickRecallItemFromTab(tab: TabMemory, state: GraveyardState, now: numb
     reason: reason || fallbackReason,
     aiEnhanced: tab.card.aiEnhanced
   };
+}
+
+async function getDailyDigest(mode: "auto" | "manual", dateKey?: string): Promise<DailyDigestResponse> {
+  const targetDateKey = dateKey ?? getPreviousLocalDateKey();
+  const runKey = targetDateKey;
+  const existingRun = dailyDigestRuns.get(runKey);
+  if (existingRun) return existingRun;
+
+  const run = buildDailyDigestResponse(mode, targetDateKey).finally(() => {
+    dailyDigestRuns.delete(runKey);
+  });
+  dailyDigestRuns.set(runKey, run);
+  return run;
+}
+
+async function buildDailyDigestResponse(mode: "auto" | "manual", targetDateKey: string): Promise<DailyDigestResponse> {
+  const state = ensureSessions(await getState());
+  const tabs = getDailyDigestTabs(state.tabs, state.settings, targetDateKey);
+  const sourceHash = buildDailyDigestSourceHash(tabs);
+  const existing = state.dailyDigests.find((digest) => digest.dateKey === targetDateKey);
+  const history = sortDailyDigests(state.dailyDigests);
+  const shouldUseExisting = existing
+    && mode !== "manual"
+    && existing.sourceHash === sourceHash
+    && (existing.generationSource === "ai" || !canAttemptDailyDigestAi(state));
+  if (shouldUseExisting) {
+    return {
+      status: "ready",
+      targetDateKey,
+      tabCount: existing.tabCount,
+      digest: existing,
+      history,
+      shouldNotify: !existing.tipShownAt && !existing.dismissedAt
+    };
+  }
+  if (!tabs.length) {
+    return {
+      status: "idle",
+      targetDateKey,
+      tabCount: 0,
+      history,
+      shouldNotify: false
+    };
+  }
+
+  try {
+    const generatedDigest = await createDailyDigest(state, tabs, targetDateKey, sourceHash, { requireAi: mode === "manual" });
+    const digest = existing
+      ? {
+          ...generatedDigest,
+          tipShownAt: existing.tipShownAt,
+          viewedAt: existing.viewedAt,
+          dismissedAt: existing.dismissedAt
+        }
+      : generatedDigest;
+    const latest = await getState();
+    const dailyDigests = sortDailyDigests([
+      digest,
+      ...latest.dailyDigests.filter((item) => item.dateKey !== targetDateKey)
+    ]).slice(0, 90);
+    const next = addEvent({ ...latest, dailyDigests }, "daily_digest_generated", {
+      dateKey: targetDateKey,
+      tabs: tabs.length,
+      mode,
+      generationSource: digest.generationSource
+    });
+    await setState(next);
+    return {
+      status: "ready",
+      targetDateKey,
+      tabCount: tabs.length,
+      digest,
+      history: dailyDigests,
+      shouldNotify: mode === "auto" && !digest.tipShownAt && !digest.dismissedAt,
+      generated: true
+    };
+  } catch (error) {
+    const reason = formatAiFallbackReason(error);
+    await setState(addEvent(await getState(), "daily_digest_failed", { dateKey: targetDateKey, tabs: tabs.length, reason }));
+    return {
+      status: "error",
+      targetDateKey,
+      tabCount: tabs.length,
+      history,
+      shouldNotify: false,
+      error: reason
+    };
+  }
+}
+
+async function createDailyDigest(state: GraveyardState, tabs: TabMemory[], dateKey: string, sourceHash: string, options: { requireAi?: boolean } = {}): Promise<DailyDigest> {
+  const language = resolveUiLanguage(state.settings.language);
+  let payload: DeepSeekDailyDigest | undefined;
+  const canAttemptAi = canAttemptDailyDigestAi(state);
+  if (canAttemptAi) {
+    try {
+      payload = await generateDailyDigestWithAi(state, tabs, dateKey, language);
+    } catch (error) {
+      if (options.requireAi) throw error;
+      payload = undefined;
+    }
+  }
+  if (!canAttemptAi && options.requireAi) throw new Error(dailyDigestAiUnavailableReason(state, language));
+  if (payload && !hasDailyDigestContent(payload)) {
+    if (options.requireAi) throw new Error(language === "zh" ? "AI 返回的每日回顾内容为空。" : "AI returned an empty daily digest.");
+    payload = undefined;
+  }
+  const fallback = buildFallbackDailyDigest(tabs, dateKey, language);
+  return {
+    id: `daily-${dateKey}`,
+    dateKey,
+    presentationDateKey: getLocalDateKey(),
+    sourceHash,
+    generationSource: payload ? "ai" : "local",
+    generatedAt: Date.now(),
+    tabIds: tabs.map((tab) => tab.id),
+    tabCount: tabs.length,
+    summary: stringOr(payload?.summary, fallback.summary).slice(0, 500),
+    themes: cleanStringArray(payload?.themes).slice(0, 8).length ? cleanStringArray(payload?.themes).slice(0, 8) : fallback.themes,
+    insights: cleanStringArray(payload?.insights).slice(0, 6).length ? cleanStringArray(payload?.insights).slice(0, 6) : fallback.insights,
+    suggestions: cleanStringArray(payload?.suggestions).slice(0, 6).length ? cleanStringArray(payload?.suggestions).slice(0, 6) : fallback.suggestions,
+    reflectionQuestions: cleanStringArray(payload?.reflectionQuestions).slice(0, 5).length ? cleanStringArray(payload?.reflectionQuestions).slice(0, 5) : fallback.reflectionQuestions,
+    gaps: cleanStringArray(payload?.gaps).slice(0, 5).length ? cleanStringArray(payload?.gaps).slice(0, 5) : fallback.gaps
+  };
+}
+
+async function generateDailyDigestWithAi(state: GraveyardState, tabs: TabMemory[], dateKey: string, language: "en" | "zh") {
+  const outputLanguage = language === "zh"
+    ? "Simplified Chinese. All user-facing JSON string values must be Chinese. Keep product names, domains, URLs, API names, and code identifiers in their original language."
+    : "English. Keep product names, domains, URLs, API names, and code identifiers in their original language.";
+  return deepSeekJson<DeepSeekDailyDigest>(
+    state,
+    `You are an AI analyst for a browser memory product. Generate a daily reflection digest from tab metadata and behavior signals. Return compact JSON only. Output language: ${outputLanguage}`,
+    `Target day: ${dateKey}
+Tabs visited that day:
+${tabs.slice(0, 32).map((tab, index) => `${index + 1}. id=${tab.id}\n${formatTabForDeepSeek(tab)}`).join("\n\n")}
+
+Return JSON:
+{
+  "summary": "2-3 sentence AI synthesis of the user's browsing day",
+  "themes": ["short theme label"],
+  "insights": ["AI-summarized observation grounded in metadata and behavior signals"],
+  "suggestions": ["AI-reasoned next step, direction, or decision prompt"],
+  "reflectionQuestions": ["AI-generated reflective question based on the browsing pattern"],
+  "gaps": ["missing angle, risk, or limitation worth noticing"]
+}
+Requirements:
+- Synthesize across tabs; do not merely restate the source list.
+- Observations should name patterns, tension, repeated focus, unusual time allocation, or unfinished trails.
+- Suggestions should be concrete and useful for deciding what to do next.
+- Reflection questions should help the user think, not summarize again.
+- Use only tab metadata and behavior signals. Do not claim facts from page bodies.
+- When a conclusion is inferred from titles, domains, topics, active time, scroll, or revisit counts, phrase it as a signal rather than a fact.`,
+    1000
+  );
+}
+
+function buildFallbackDailyDigest(tabs: TabMemory[], dateKey: string, language: "en" | "zh") {
+  const themes = topValues(tabs.flatMap((tab) => tab.card.topics), 5);
+  const domains = topValues(tabs.map((tab) => tab.domain), 3);
+  const contentTypes = topValues(tabs.map((tab) => tab.card.contentType), 3);
+  const longest = [...tabs].sort((a, b) => b.signals.activeMs - a.signals.activeMs)[0];
+  const returned = [...tabs].sort((a, b) => b.signals.activationCount - a.signals.activationCount)[0];
+  const themeText = themes.join(language === "zh" ? "、" : ", ") || (language === "zh" ? "综合浏览" : "general browsing");
+  const domainText = domains.join(language === "zh" ? "、" : ", ") || (language === "zh" ? "多个来源" : "mixed sources");
+  const contentText = contentTypes.join(language === "zh" ? "、" : ", ") || (language === "zh" ? "多种类型" : "mixed formats");
+  if (language === "zh") {
+    return {
+      summary: `昨天你访问了 ${tabs.length} 个页面，主要集中在 ${themeText}。来源较多的是 ${domainText}，内容形态以 ${contentText} 为主。`,
+      themes,
+      insights: [
+        longest ? `停留时间最明显的页面是「${shortTitle(longest.title)}」，约 ${Math.round(longest.signals.activeMs / 60000)} 分钟。` : "",
+        returned && returned.signals.activationCount > 1 ? `你多次回到「${shortTitle(returned.title)}」，这可能是仍在推进的线索。` : "",
+        `浏览轨迹显示你在 ${themeText} 上有连续注意力。`
+      ].filter(Boolean),
+      suggestions: [
+        `把 ${themes[0] ?? "昨天"} 相关页面整理成一个会话，区分继续推进和可以归档的链接。`,
+        "挑出一个真正要继续的问题，避免今天继续发散。"
+      ],
+      reflectionQuestions: [
+        "昨天哪些页面真的改变了你的判断，哪些只是信息消费？",
+        `围绕 ${themes[0] ?? "这些内容"}，今天最小的下一步是什么？`
+      ],
+      gaps: ["当前回顾基于标题、域名、主题和行为信号，没有读取网页正文。"]
+    };
+  }
+  return {
+    summary: `Yesterday you visited ${tabs.length} pages, mostly around ${themeText}. The strongest sources were ${domainText}, with ${contentText} as the main content mix.`,
+    themes,
+    insights: [
+      longest ? `The clearest time signal was "${shortTitle(longest.title)}" at about ${Math.round(longest.signals.activeMs / 60000)} minutes.` : "",
+      returned && returned.signals.activationCount > 1 ? `You returned to "${shortTitle(returned.title)}" multiple times, which may indicate unfinished work.` : "",
+      `The browsing trail shows sustained attention around ${themeText}.`
+    ].filter(Boolean),
+    suggestions: [
+      `Turn the ${themes[0] ?? "yesterday"} links into a session and separate continue, archive, and discard candidates.`,
+      "Pick one question to carry forward today instead of reopening the whole trail."
+    ],
+    reflectionQuestions: [
+      "Which pages changed your judgment, and which were just information intake?",
+      `What is the smallest next step for ${themes[0] ?? "this trail"} today?`
+    ],
+    gaps: ["This digest uses titles, domains, topics, and behavior signals. It does not read page bodies."]
+  };
+}
+
+function hasDailyDigestContent(payload: DeepSeekDailyDigest) {
+  return Boolean(
+    stringOr(payload.summary, "")
+    || cleanStringArray(payload.insights).length
+    || cleanStringArray(payload.suggestions).length
+    || cleanStringArray(payload.reflectionQuestions).length
+  );
+}
+
+async function updateDailyDigestMeta(digestId: string, patch: Partial<Pick<DailyDigest, "tipShownAt" | "viewedAt" | "dismissedAt">>): Promise<DailyDigestResponse> {
+  const state = await getState();
+  const dailyDigests = state.dailyDigests.map((digest) => (digest.id === digestId ? { ...digest, ...patch } : digest));
+  const digest = dailyDigests.find((item) => item.id === digestId);
+  await setState(addEvent({ ...state, dailyDigests }, "daily_digest_updated", { digestId, viewed: Boolean(patch.viewedAt), dismissed: Boolean(patch.dismissedAt) }));
+  return {
+    status: digest ? "ready" : "idle",
+    targetDateKey: digest?.dateKey ?? getPreviousLocalDateKey(),
+    tabCount: digest?.tabCount ?? 0,
+    digest,
+    history: sortDailyDigests(dailyDigests),
+    shouldNotify: false
+  };
+}
+
+function sortDailyDigests(digests: DailyDigest[]) {
+  return [...digests].sort((a, b) => b.dateKey.localeCompare(a.dateKey) || b.generatedAt - a.generatedAt);
+}
+
+function topValues(values: string[], limit: number) {
+  const counts = new Map<string, number>();
+  for (const value of values.map((item) => item.trim()).filter(Boolean)) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, limit)
+    .map(([value]) => value);
+}
+
+function shortTitle(title: string) {
+  return title.replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
 async function summarizeRecallWithDeepSeek(query: string, tabIds?: string[], sessionId?: string): Promise<RecallSynthesisResult> {
@@ -1650,6 +1948,7 @@ async function deepSeekChat(state: GraveyardState, messages: DeepSeekMessage[], 
 function canUseDeepSeek(state: GraveyardState) {
   const settings = state.settings;
   return settings.aiMode !== "local-only"
+    && settings.deepSeek.enabled
     && !settings.strictPrivacy
     && Boolean(settings.deepSeek.baseUrl.trim())
     && Boolean(settings.deepSeek.model.trim())
@@ -1663,6 +1962,38 @@ function canUseBrowserAi(state: GraveyardState) {
 
 function canUseAiProvider(state: GraveyardState) {
   return canUseBrowserAi(state) || canUseDeepSeek(state);
+}
+
+function canAttemptDailyDigestAi(state: GraveyardState) {
+  const hasBrowserLanguageModel = typeof (globalThis as unknown as { LanguageModel?: unknown }).LanguageModel !== "undefined";
+  return canUseDeepSeek(state) || (canUseBrowserAi(state) && hasBrowserLanguageModel);
+}
+
+function dailyDigestAiUnavailableReason(state: GraveyardState, language: "en" | "zh") {
+  const settings = state.settings;
+  if (settings.strictPrivacy || settings.aiMode === "local-only") {
+    return language === "zh"
+      ? "严格隐私模式已开启，当前不会向 DeepSeek 发送请求。请在设置的 AI 页面关闭严格隐私模式，并确认 DeepSeek 配置可用。"
+      : "Strict privacy mode is enabled, so Tab Graveyard will not send requests to DeepSeek. Turn off strict privacy in AI settings and confirm the DeepSeek configuration.";
+  }
+  if (!settings.deepSeek.enabled) {
+    return language === "zh"
+      ? "DeepSeek 当前未启用。请在设置的 AI 页面启用 DeepSeek 或配置可用的本地 AI。"
+      : "DeepSeek is disabled. Enable DeepSeek in AI settings or configure an available local AI provider.";
+  }
+  if (!settings.deepSeek.baseUrl.trim() || !settings.deepSeek.model.trim()) {
+    return language === "zh"
+      ? "DeepSeek Base URL 或模型名缺失。请在设置的 AI 页面补全配置。"
+      : "DeepSeek Base URL or model is missing. Complete the AI settings first.";
+  }
+  if (!settings.deepSeek.apiKey.trim() && !isLocalAiEndpoint(settings.deepSeek.baseUrl)) {
+    return language === "zh"
+      ? "DeepSeek API Key 缺失。请在设置的 AI 页面填写 API Key，或使用本地兼容 OpenAI 的 endpoint。"
+      : "DeepSeek API key is missing. Add an API key in AI settings, or use a local OpenAI-compatible endpoint.";
+  }
+  return language === "zh"
+    ? "当前没有可用的 AI provider。请检查 DeepSeek 配置或浏览器本地 AI 能力。"
+    : "No AI provider is currently available. Check the DeepSeek configuration or browser local AI support.";
 }
 
 function assertDeepSeekConfigured(state: GraveyardState) {
@@ -1904,6 +2235,15 @@ type DeepSeekSynthesis = {
   bullets?: unknown;
   gaps?: unknown;
   topics?: unknown;
+};
+
+type DeepSeekDailyDigest = {
+  summary?: unknown;
+  themes?: unknown;
+  insights?: unknown;
+  suggestions?: unknown;
+  reflectionQuestions?: unknown;
+  gaps?: unknown;
 };
 
 type DeepSeekInfoCard = {
